@@ -1,0 +1,11 @@
+.DS_Store
+.idea
+.vim
+.vscode
+
+experiment/
+
+**/cov/
+html_cov/
+cov.lcov
+coverage/
