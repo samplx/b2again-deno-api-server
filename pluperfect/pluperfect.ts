@@ -131,6 +131,10 @@ async function gatherRequestGroups(
     themeList: Array<ItemType>
 ): Promise<Array<RequestGroup>> {
     const fromReleases = await gatherCoreRequestGroups(options, locations, releases, locales);
+
+    const json = JSON.stringify(fromReleases, null, options.jsonSpaces);
+    await Deno.writeTextFile('./debug-fromReleases.json', json);
+
     const fromPlugins = await gatherPluginRequestGroups(options, locations, pluginList, locales);
     const fromThemes = await gatherThemeReuqestGroups(options, locations, themeList, locales);
 
