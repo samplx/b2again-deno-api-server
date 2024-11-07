@@ -1,0 +1,487 @@
+/*
+ *  Copyright 2024 James Burlingame
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+
+// function getBasename(url: string): string {
+//     return url.substring(url.lastIndexOf('/')+1);
+// }
+
+// function getHomepageUrl(supportBaseUrl: string, slug: string): string {
+//     return new URL(`/homepages/themes/legacy/${slug}/`, supportBaseUrl).toString();
+// }
+
+// function getReviewUrl(supportBaseUrl: string, slug: string): string {
+//     return new URL(`/reviews/themes/legacy/${slug}/`, supportBaseUrl).toString();
+// }
+
+// function getScreenshotUrl(downloadsBaseUrl: string, split: string, url: string): string {
+//     const screenshot = getBasename(url);
+//     return new URL(`/themes/live/legacy/${split}/screenshots/${screenshot}`, downloadsBaseUrl).toString();
+// }
+
+// function getZipUrl(downloadsBaseUrl: string, split: string, existing: string, version?: string): string {
+//     const filename = getBasename(existing);
+//     if (version) {
+//         return new URL(`/themes/read-only/legacy/${split}/${version}/${filename}`, downloadsBaseUrl).toString();
+//     }
+//     return new URL(`/themes/read-only/legacy/${split}/${filename}`, downloadsBaseUrl).toString();
+// }
+
+// function isWordpressOrg(url: string): boolean {
+//     return url.toLowerCase().startsWith('https://wordpress.org/');
+// }
+
+// export function migrateThemeInfo(downloadsBaseUrl: string,
+//                                  supportBaseUrl: string,
+//                                  split: string,
+//                                  input: ThemeInfo,
+//                                  fromAPI: ThemeInfo): ThemeInfo {
+
+//     const kleen = structuredClone(input); //{ ...input };
+//     if ((typeof kleen.author === 'string') && (kleen.author.indexOf('@') < 0)) {
+//         kleen.author = `${kleen.author}@wordpress.org`;
+//     } else if ((typeof kleen.author === 'object') &&
+//                (kleen.author.user_nicename && (kleen.author.user_nicename.indexOf('@') < 0))) {
+//         kleen.author.user_nicename = `${kleen.author.user_nicename}@wordpress.org`;
+//     }
+//     kleen.preview_url = new URL(`/plugins/live/legacy/${split}/preview/index.html`, downloadsBaseUrl).toString();
+//     if (kleen.screenshot_url) {
+//         kleen.screenshot_url = getScreenshotUrl(downloadsBaseUrl, split, kleen.screenshot_url);
+//     }
+//     if (kleen.download_link) {
+//         if (kleen.version) {
+//             kleen.download_link = getZipUrl(downloadsBaseUrl, split, kleen.download_link, kleen.version);
+//         } else {
+//             kleen.download_link = getZipUrl(downloadsBaseUrl, split, kleen.download_link);
+//         }
+//     }
+//     if (kleen.reviews_url && kleen.slug && isWordpressOrg(kleen.reviews_url)) {
+//         kleen.reviews_url = getReviewUrl(supportBaseUrl, kleen.slug);
+//     }
+//     if (kleen.homepage && kleen.slug && isWordpressOrg(kleen.homepage)) {
+//         kleen.homepage = getHomepageUrl(supportBaseUrl, kleen.slug);
+//     }
+//     if (kleen.versions) {
+//         // kleen is a shallow copy, deepen it before we mutate it
+//         kleen.versions = { ...kleen.versions };
+//         for (const version in kleen.versions) {
+//             kleen.versions[version] = getZipUrl(downloadsBaseUrl, split, kleen.versions[version], version);
+//         }
+//     }
+//     if (typeof kleen.description === 'string') {
+//         if (!kleen.sections) {
+//             kleen.sections = { description: kleen.description };
+//             kleen.description = undefined;
+//         } else if (kleen.sections?.description === kleen.description) {
+//             kleen.description = undefined;
+//         } else if (typeof kleen.sections?.description !== 'string') {
+//             // deepen copy before mutation
+//             kleen.sections = { ...kleen.sections };
+//             kleen.sections.description = kleen.description;
+//         }
+//     } else if (typeof fromAPI.description === 'string') {
+//         if (!kleen.sections) {
+//             kleen.sections = { description: fromAPI.description };
+//         } else if (typeof kleen.sections?.description !== 'string') {
+//             // deepen copy before mutation
+//             kleen.sections = { ...kleen.sections };
+//             kleen.sections.description = fromAPI.description;
+//         }
+//     }
+//     if (kleen.parent) {
+//         kleen.parent = { ... kleen.parent };
+//     } else if (fromAPI.parent) {
+//         kleen.parent = { ...fromAPI.parent };
+//     }
+//     if (kleen.parent && typeof kleen?.parent?.slug === 'string') {
+//         kleen.parent.homepage = getHomepageUrl(supportBaseUrl, kleen.parent.slug);
+//     }
+//     if (!kleen.template && fromAPI.template) {
+//         kleen.template = fromAPI.template;
+//     }
+//     kleen.rating = 0;
+//     kleen.ratings = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+//     kleen.num_ratings = 0;
+//     kleen.active_installs = 0;
+//     kleen.downloaded = 0;
+//     return kleen;
+// }
+
+
+
+// /**
+//  * Query the api to determine which translations/locales are supported for each
+//  * version of a theme. These files are then downloaded.
+//  * @param options command-line options.
+//  * @param slug unique identifier for the theme.
+//  * @param split directory split.
+//  * @param themeMetaDir where the theme specific meta data starts
+//  * @param themeReadOnlyDir top of tree of theme zip files
+//  * @param releaseId unique identifier for the release, e.g. '6.2.2'
+//  * @returns list of information about downloaded files.
+//  */
+// async function processThemeTranslations(
+//     options: CommandOptions,
+//     slug: string,
+//     split: string,
+//     themeMetaDir: string,
+//     themeReadOnlyDir: string,
+//     releaseId: string
+// ): Promise<Array<DownloadFileInfo>> {
+//     const releaseMetaDir = path.join(themeMetaDir, releaseId)
+//     vreporter(`> mkdir -p ${releaseMetaDir}`);
+//     await Deno.mkdir(releaseMetaDir, { recursive: true });
+
+//     const url = new URL(`/translations/themes/1.0/`, `https://${options.apiHost}`);
+//     url.searchParams.append('slug', slug)
+//     url.searchParams.append('version', releaseId);
+
+//     const files: Array<DownloadFileInfo> = [];
+//     const o = await downloadMetaLegacyJson(reporter, releaseMetaDir, 'translations.json',
+//             url, options.force, options.jsonSpaces,
+//             getMigrateThemeTranslation(options, split, releaseId));
+
+//     if (o && (typeof o === 'object') && ('translations' in o) && Array.isArray(o.translations)) {
+//         const translations: Array<ThemeTranslationEntry> = o.translations;
+//         const releaseReadOnlyL10nDir = path.join(themeReadOnlyDir, releaseId, 'l10n');
+//         vreporter(`> mkdir -p ${releaseReadOnlyL10nDir}`);
+//         await Deno.mkdir(releaseReadOnlyL10nDir, { recursive: true });
+//         for (const t of translations) {
+//             const info = await downloadZip(reporter, t.package, releaseReadOnlyL10nDir, options.force, options.rehash);
+//             files.push(info);
+//         }
+//     }
+
+//     return files;
+// }
+
+// /**
+//  * Handle the downloading and processing of a single theme.
+//  * @param options command-line options.
+//  * @param prefixLength number of characters to use in the directory prefix.
+//  * @param slug theme slug.
+//  * @returns
+//  */
+// async function processTheme(
+//         options: CommandOptions,
+//         prefixLength: number,
+//         slug: string,
+//         outdated: boolean,
+//         fromAPI: ThemeInfo
+//     ): Promise<GroupDownloadInfo> {
+//     const split = splitFilename(slug, prefixLength);
+//     const themeReadOnlyDir = path.join(options.documentRoot, 'themes', 'read-only', 'legacy', split);
+//     const themeMetaDir = path.join(options.documentRoot, 'themes', 'meta', 'legacy', split);
+//     const themeLiveDir = path.join(options.documentRoot, 'themes', 'live', 'legacy', split);
+
+//     const files: Record<string, DownloadFileInfo> = {};
+//     const infoUrl = getThemeInfoUrl(options.apiHost, slug);
+//     let ok = true;
+//     let last_updated_time;
+//     try {
+//         vreporter(`> mkdir -p ${themeReadOnlyDir}`);
+//         await Deno.mkdir(themeReadOnlyDir, { recursive: true });
+//         vreporter(`> mkdir -p ${themeMetaDir}`);
+//         await Deno.mkdir(themeMetaDir, { recursive: true });
+
+//         const [ themeInfo, migratedTheme ] = await handleThemeInfo(options, themeMetaDir, infoUrl, split, outdated || options.force, fromAPI);
+//         if (themeInfo) {
+//             if ((typeof themeInfo.slug !== 'string') ||
+//                 (typeof themeInfo.error === 'string') ||
+//                 (typeof themeInfo.download_link !== 'string')) {
+//                 ok = false;
+//             } else {
+//                 last_updated_time = themeInfo.last_updated_time;
+//                 let fileInfo;
+//                 if (themeInfo.version) {
+//                     const releaseReadOnlyDir = path.join(themeReadOnlyDir, themeInfo.version);
+//                     vreporter(`> mkdir -p ${releaseReadOnlyDir}`);
+//                     await Deno.mkdir(releaseReadOnlyDir, { recursive: true });
+//                     fileInfo = await downloadZip(reporter, themeInfo.download_link, releaseReadOnlyDir, options.force, options.rehash);
+//                 } else {
+//                     fileInfo = await downloadZip(reporter, themeInfo.download_link, themeReadOnlyDir, options.force, options.rehash);
+//                 }
+//                 ok = ok && (fileInfo.status === 'full');
+//                 files[fileInfo.filename] = fileInfo;
+//                 if (options.full || options.live) {
+//                     let changed = false;
+//                     if ((typeof themeInfo.preview_url === 'string') && (typeof migratedTheme.preview_url === 'string')) {
+//                         // preview_url
+//                         const previewDir = path.join(themeLiveDir, 'preview');
+//                         vreporter(`> mkdir -p ${previewDir}`);
+//                         await Deno.mkdir(previewDir, { recursive: true });
+//                         const previewUrl = new URL(themeInfo.preview_url);
+//                         const previewInfo = await downloadLiveFile(reporter, previewUrl, previewDir, 'index.html', options.hashLength);
+//                         ok = ok && (previewInfo.status === 'full');
+//                         files[previewInfo.filename] = previewInfo;
+//                         migratedTheme.preview_url = `${options.downloadsBaseUrl}${previewInfo.filename.substring(options.documentRoot.length+1)}`;
+//                         changed = true;
+//                     }
+//                     if (typeof themeInfo.screenshot_url === 'string') {
+//                         // screenshot_url
+//                         const screenshotsDir = path.join(themeLiveDir, 'screenshots');
+//                         vreporter(`> mkdir -p ${screenshotsDir}`);
+//                         await Deno.mkdir(screenshotsDir, { recursive: true });
+//                         // some ts.w.org URL's don't have a scheme?
+//                         const screenshotUrl = new URL(themeInfo.screenshot_url.startsWith('//') ? `https:${themeInfo.screenshot_url}` : themeInfo.screenshot_url);
+//                         const screenshotInfo = await downloadLiveFile(reporter, screenshotUrl, screenshotsDir, path.basename(screenshotUrl.pathname), options.hashLength);
+//                         ok = ok && (screenshotInfo.status === 'full');
+//                         files[screenshotInfo.filename] = screenshotInfo;
+//                         migratedTheme.screenshot_url = `${options.downloadsBaseUrl}${screenshotInfo.filename.substring(options.documentRoot.length+1)}`;
+//                         changed = true;
+//                     }
+//                     if (changed) {
+//                         await saveThemeInfo(options, themeMetaDir, migratedTheme);
+//                     }
+//                 }
+//                 if (options.full || options.zips) {
+//                     if (typeof themeInfo.versions === 'object') {
+//                         for (const version in themeInfo.versions) {
+//                             if (version !== 'trunk') {
+//                                 const releaseReadOnlyDir = path.join(themeReadOnlyDir, version);
+//                                 vreporter(`> mkdir -p ${releaseReadOnlyDir}`);
+//                                 await Deno.mkdir(releaseReadOnlyDir, { recursive: true });
+//                                 if (version !== themeInfo.version) { // we have already dl the main zip,
+//                                     const fileInfo = await downloadZip(reporter, themeInfo.versions[version], releaseReadOnlyDir, options.force, options.rehash);
+//                                     files[fileInfo.filename] = fileInfo;
+//                                     ok = ok && (fileInfo.status === 'full');
+//                                 }
+//                                 const l10n = await processThemeTranslations(options, slug, split, themeMetaDir, themeReadOnlyDir, version);
+//                                 for (const item of l10n) {
+//                                     files[item.filename] = item;
+//                                     ok = ok && (item.status === 'full');
+//                                 }
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     } catch (_) {
+//         console.error(`Exception: ${_}`);
+//         ok= false;
+//     }
+
+//     return {
+//         status: ok ? (options.full ? 'full' : 'partial') : 'failed',
+//         when: Date.now(),
+//         files,
+//         last_updated_time
+//     };
+// }
+
+// /**
+//  * Determine the URL to use to request theme information.
+//  * @param apiHost where the API is.
+//  * @param name slug used to access the theme.
+//  * @returns
+//  */
+// function getThemeInfoUrl(apiHost: string, name: string): URL {
+//     const url = new URL('/themes/info/1.2/', `https://${apiHost}`);
+//     url.searchParams.append('action', 'theme_information');
+//     url.searchParams.append('slug', name);
+//     url.searchParams.append('fields[]','description');
+//     url.searchParams.append('fields[]','versions');
+//     url.searchParams.append('fields[]','ratings');
+//     url.searchParams.append('fields[]','active_installs');
+//     url.searchParams.append('fields[]','sections');
+//     url.searchParams.append('fields[]','parent');
+//     url.searchParams.append('fields[]','template');
+//     return url;
+// }
+
+// /**
+//  * Download the theme information JSON file, if necessary. The download
+//  * may be forced by setting the force parameter. If the file does not
+//  * exist, we will attempt to download the file.
+//  * @param themeDir where to put the json file.
+//  * @param infoUrl where to get the json file.
+//  * @param force if true, remove any old file first.
+//  * @returns
+//  */
+// async function handleThemeInfo(
+//     options: CommandOptions,
+//     themeMetaDir: string,
+//     infoUrl: URL,
+//     split: string,
+//     force: boolean,
+//     fromAPI: ThemeInfo
+// ): Promise<Array<ThemeDownloadResult>> {
+//     const themeJson = path.join(themeMetaDir, 'theme.json');
+//     const legacyThemeJson = path.join(themeMetaDir, 'legacy-theme.json');
+//     try {
+//         if (force) {
+//             await Deno.remove(themeJson, { recursive: true });
+//             await Deno.remove(legacyThemeJson, { recursive: true });
+//         }
+//         const legacyContents = await Deno.readTextFile(legacyThemeJson);
+//         const legacyObj = JSON.parse(legacyContents);
+//         const migratedContents = await Deno.readTextFile(themeJson);
+//         const migratedObj = JSON.parse(migratedContents);
+//         return [ legacyObj, migratedObj ];
+//     } catch (_) {
+//         reporter(`fetch(${infoUrl}) > ${legacyThemeJson}`);
+//         const response = await fetch(infoUrl);
+//         if (!response.ok) {
+//             const error = `${response.status} ${response.statusText}`;
+//             reporter(`fetch failed: ${error}`);
+//             return [{ error }, { error }];
+//         }
+//         const json = await response.json();
+//         const rawText = JSON.stringify(json, null, options.jsonSpaces);
+//         const migrated = migrateThemeInfo(options.downloadsBaseUrl, options.supportBaseUrl, split, json, fromAPI);
+//         await saveThemeInfo(options, themeMetaDir, migrated);
+//         await Deno.writeTextFile(legacyThemeJson, rawText);
+//         return [ json, migrated ];
+//     }
+// }
+
+// /**
+//  * Persist theme information.
+//  * @param options command-line options.
+//  * @param themeMetaDir where meta data is to be stored.
+//  * @param info information about a theme.
+//  */
+// async function saveThemeInfo(
+//     options: CommandOptions,
+//     themeMetaDir: string,
+//     info: ThemeInfo
+// ): Promise<void> {
+//     const themeJson = path.join(themeMetaDir, 'theme.json');
+//     const text = JSON.stringify(info, null, options.jsonSpaces);
+//     await Deno.writeTextFile(themeJson, text);
+// }
+
+// /**
+//  * Download all of the theme files.
+//  * @param options command-line options.
+//  * @param prefixLength number of characters in prefix of split filename.
+//  * @param themeSlugs list of plugin slugs.
+//  */
+// async function downloadFiles(options: CommandOptions, prefixLength: number, themeSlugs: Array<string>, themeList: Array<ThemeInfo>): Promise<void> {
+//     const statusFilename = path.join(options.documentRoot, 'themes', 'meta', options.statusFilename);
+//     const status = await readDownloadStatus(statusFilename, themeSlugs);
+//     let ok: boolean = true;
+//     let soFar: number = 0;
+//     let success: number = 0;
+//     let failure: number = 0;
+//     let skipped: number = 0;
+//     let needed: boolean = false;
+//     let outdated: boolean = false;
+//     let changed: boolean = false;
+//     let pace: number = parseInt(options.pace);
+//     if (isNaN(pace)) {
+//         pace = DEFAULT_PACE;
+//         console.error(`Warning: unable to parse ${options.pace} as an integer. default ${pace} is used`);
+//     }
+//     // go through and mark themes for which we are no longer interested.
+//     for (const slug in status.map) {
+//         if (!themeSlugs.includes(slug)) {
+//             status.map[slug].status = 'uninteresting';
+//         }
+//     }
+//     for (const item of themeList) {
+//         if (typeof item.slug !== 'string') {
+//             continue;
+//         }
+//         const slug = item.slug;
+//         needed = false;
+//         outdated = false;
+//         if (typeof status.map[slug] !== 'object') {
+//             status.map[slug] = { status: 'unknown', when: 0, files: {} };
+//         }
+//         if ((typeof status.map[slug] === 'object') &&
+//             (typeof status.map[slug]?.status === 'string') &&
+//             (typeof status.map[slug]?.when === 'number')) {
+
+//             // check to see if the data we have is out of date.
+//             if ((typeof status.map[slug]?.last_updated_time === 'string') &&
+//                 (typeof item?.last_updated_time === 'string') &&
+//                 (status.map[slug].last_updated_time < item.last_updated_time)) {
+//                 status.map[slug].status = 'outdated';
+//             }
+//             // determine if we need this theme
+//             switch (status.map[slug]?.status) {
+//                 case 'unknown':
+//                     needed = true;
+//                     break;
+//                 case 'partial':
+//                     needed = options.full;
+//                     break;
+//                 case 'full':
+//                 case 'uninteresting':
+//                     needed = false;
+//                     break;
+//                 case 'failed':
+//                     needed = options.retry;
+//                     break;
+//                 case 'outdated':
+//                     needed = true;
+//                     outdated = true;
+//                     break;
+//                 default:
+//                     console.error(`Error: unrecognized status. slug=${slug}, status=${status.map[slug]?.status}`);
+//                     break;
+//             }
+//             soFar += 1;
+//             if (needed || options.force || options.rehash || outdated) {
+//                 const themeStatus = await processTheme(options, prefixLength, slug, outdated, item);
+//                 if ((themeStatus.status === 'full') || (themeStatus.status === 'partial')) {
+//                     success += 1;
+//                 } else if (themeStatus.status === 'failed') {
+//                     failure += 1;
+//                 } else {
+//                     console.error(`Warning: unknown status after processTheme: slug=${slug}`);
+//                 }
+//                 changed = true;
+//                 const existing = status.map[slug].files;
+//                 status.map[slug].status = themeStatus.status;
+//                 status.map[slug].when = themeStatus.when;
+//                 status.map[slug].last_updated_time = themeStatus.last_updated_time;
+//                 status.map[slug].files = {};
+//                 for (const name in themeStatus.files) {
+//                     status.map[slug].files[name] = mergeDownloadInfo(existing[name], themeStatus.files[name]);
+//                 }
+//                 ok = ok && (themeStatus.status !== 'failed');
+//             } else {
+//                 skipped += 1;
+//                 vreporter(`skipped slug: ${slug}`);
+//             }
+//         } else {
+//             console.error(`Error: unknown status: slug=${slug}`);
+//         }
+//         if ((soFar % pace) == 0) {
+//             if (changed) {
+//                 reporter(`save status > ${statusFilename}`);
+//                 ok = await saveDownloadStatus(statusFilename, status) && ok;
+//             }
+//             changed = false;
+//             vreporter('');
+//             reporter(`themes processed:   ${soFar}`);
+//             vreporter(`successful:         ${success}`);
+//             vreporter(`failures:           ${failure}`);
+//             vreporter(`skipped:            ${skipped}`);
+//         }
+//     }
+//     status.when = Date.now();
+//     reporter(`save status > ${statusFilename}`);
+//     ok = await saveDownloadStatus(statusFilename, status) && ok;
+
+//     reporter(`Total themes processed:   ${soFar}`);
+//     reporter(`Total successful:         ${success}`);
+//     reporter(`Total failures:           ${failure}`);
+//     reporter(`Total skipped:            ${skipped}`);
+// }
