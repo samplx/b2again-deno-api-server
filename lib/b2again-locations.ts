@@ -21,7 +21,6 @@ import {
     ContentHostType,
     ArchiveGroupName,
     MigrationContext,
-    SlugLocaleUrlProvider,
     SlugUrlProvider,
     SlugVersionOriginalUrlProvider,
     splitDirname,
@@ -30,36 +29,32 @@ import {
     SlugOriginalUrlProvider,
     SlugOriginalLiveUrlProvider,
     LiveUrlProviderResult,
-    VersionLocaleVersionUrlProvider
+    VersionLocaleVersionUrlProvider,
+    SlugLocaleOriginalUrlProvider
 } from "./standards.ts";
 
+/**
+ * this is an implementation of a configuration object that is used by
+ * the b2again CMS project.
+ * since host and directory layouts is prone to endless bikesheding,
+ * it is all isolated in this bit of code.
+ * the code is functional in nature. lots of higher-level functions,
+ * currying, and the like.
+ * in general, the `StandardLocations` object is full of functions that
+ * are called in order to create values rather than values themselves.
+ * truly an endless frontier of potential bikesheding, but this is the
+ * layout for the POC.
+ * there is only a single 'downloads' host which holds all of the files.
+ */
 
-function getFilenameSlugProvider(
-    host: ContentHostType,
-    sourceName: string,
-    section: ArchiveGroupName,
-    filename: string,
-    groupName: string = 'meta'
-): SlugUrlProvider {
-    return function (ctx: MigrationContext, slug: string): UrlProviderResult {
-        const split = splitDirname(ctx, section, slug);
-        return bindHost(ctx, host, `/${groupName}/${sourceName}/${section}/${split}/${filename}`);
-    }
-}
-
-function getFilenameLocaleSlugProvider(
-    host: ContentHostType,
-    sourceName: string,
-    section: ArchiveGroupName,
-    filename: string,
-    groupName: string = 'meta'
-): SlugLocaleUrlProvider {
-    return function (ctx: MigrationContext, slug: string, locale: string): UrlProviderResult {
-        const split = splitDirname(ctx, section, slug);
-        return bindHost(ctx, host, `/${groupName}/${sourceName}/${section}/${split}/l10n/${locale}/${filename}`);
-    }
-}
-
+/**
+ * create a url provider result for a specific logical host.
+ * @param ctx bag of information used to translate urls.
+ * @param host logical host name of the resource.
+ * @param relative pathname relative to the host base directory.
+ * @param upstream optional url to be requested.
+ * @returns
+ */
 function bindHost(
     ctx: MigrationContext,
     host: ContentHostType,
@@ -79,14 +74,86 @@ function bindHost(
     };
 }
 
-function getCommonProvider(host: ContentHostType, sourceName: string, filename: string, groupName: string = 'meta'): CommonUrlProvider {
+/**
+ * create a url provider that involves a slug and a filename.
+ * @param host which host holds the content.
+ * @param sourceName name of the upstream source.
+ * @param section group of data: core, plugins, themes.
+ * @param filename last part of the name.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher-order function that is passed a slug value.
+ */
+function getFilenameSlugProvider(
+    host: ContentHostType,
+    sourceName: string,
+    section: ArchiveGroupName,
+    filename: string,
+    groupName: string = 'meta'
+): SlugUrlProvider {
+    return function (ctx: MigrationContext, slug: string): UrlProviderResult {
+        const split = splitDirname(ctx, section, slug);
+        return bindHost(ctx, host, `/${groupName}/${sourceName}/${section}/${split}/${filename}`);
+    }
+}
+
+/**
+ * create a url provider that involves a slug, locale and a filename.
+ * @param host which host holds the content.
+ * @param sourceName name of the upstream source.
+ * @param section group of data: core, plugins, themes.
+ * @param filename last part of the name.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher-order function that is passed a slug and a locale.
+ */
+function getFilenameLocaleSlugProvider(
+    host: ContentHostType,
+    sourceName: string,
+    section: ArchiveGroupName,
+    filename: string,
+    groupName: string = 'meta'
+): SlugLocaleOriginalUrlProvider {
+    return function (ctx: MigrationContext, slug: string, locale: string, original: string): UrlProviderResult {
+        const split = splitDirname(ctx, section, slug);
+        return bindHost(ctx, host, `/${groupName}/${sourceName}/${section}/${split}/l10n/${locale}/${filename}`, original);
+    }
+}
+
+/**
+ * create a url provider for a single file (no parameters).
+ * @param host which host holds the content.
+ * @param sourceName name of the upstream source.
+ * @param filename last part of the name.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher-order function that provides a single url.
+ */
+function getCommonProvider(
+    host: ContentHostType,
+    sourceName: string,
+    filename: string,
+    groupName: string = 'meta'
+): CommonUrlProvider {
     return function (ctx: MigrationContext): UrlProviderResult {
         const relative = `/${groupName}/${sourceName}/${filename}`;
         return bindHost(ctx, host, relative);
     }
 }
 
-function getSlugVersionOriginalUrlProvider(host: ContentHostType, section: ArchiveGroupName, sourceName: string, postSplit: string = '', groupName: string= 'read-only'): SlugVersionOriginalUrlProvider {
+/**
+ * create a url provider that depends upon a slug, version and the original url.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param postSplit additional contents after the split directory/slug portion.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher-order function that needs a slug, version and original url.
+ */
+function getSlugVersionOriginalUrlProvider(
+    host: ContentHostType,
+    section: ArchiveGroupName,
+    sourceName: string,
+    postSplit: string = '',
+    groupName: string= 'read-only'
+): SlugVersionOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, version: string, original: string): UrlProviderResult {
         const filename = path.basename(original);
         const split = splitDirname(ctx, section, slug);
@@ -95,14 +162,40 @@ function getSlugVersionOriginalUrlProvider(host: ContentHostType, section: Archi
     }
 }
 
-function getSlugUrlProvider(host: ContentHostType, section: ArchiveGroupName, sourceName: string, groupName: string): SlugOriginalUrlProvider {
+/**
+ * create a url provider that depends upon a slug and the original url.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher-order function that depends upon a slug and (potentially) the original url.
+ */
+function getSlugUrlProvider(
+    host: ContentHostType,
+    section: ArchiveGroupName,
+    sourceName: string,
+    groupName: string
+): SlugOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, _original: string): UrlProviderResult {
         const relative = `/${groupName}/${section}/${sourceName}/${slug}/`;
         return bindHost(ctx, host, relative);
     }
 }
 
-function getSlugOriginalLiveUrlProvider(host: ContentHostType, section: ArchiveGroupName, sourceName: string, fileType: string): SlugOriginalLiveUrlProvider {
+/**
+ * create a live url provider that depends upon a slug and the original url.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param fileType screenshots, banners, preview.
+ * @returns higher-order function that depends upon the slug and the original url.
+ */
+function getSlugOriginalLiveUrlProvider(
+    host: ContentHostType,
+    section: ArchiveGroupName,
+    sourceName: string,
+    fileType: string
+): SlugOriginalLiveUrlProvider {
     return function (ctx: MigrationContext, slug: string, original: string): LiveUrlProviderResult {
         const filename = path.basename(original);
         const split = splitDirname(ctx, section, slug);
@@ -119,7 +212,20 @@ function getSlugOriginalLiveUrlProvider(host: ContentHostType, section: ArchiveG
     }
 }
 
-function getSlugLiveIndexUrlProvider(host: ContentHostType, section: ArchiveGroupName, sourceName: string, fileType: string): SlugOriginalLiveUrlProvider {
+/**
+ * create a live url provider for an index.html file that depends upon a slug and the original url.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param fileType screenshots, banners, preview.
+ * @returns higher-order function that depends upon the slug and the original url.
+ */
+function getSlugLiveIndexUrlProvider(
+    host: ContentHostType,
+    section: ArchiveGroupName,
+    sourceName: string,
+    fileType: string
+): SlugOriginalLiveUrlProvider {
     return function (ctx: MigrationContext, slug: string, _original: string): LiveUrlProviderResult {
         const filename = 'index.html';
         const split = splitDirname(ctx, section, slug);
@@ -136,6 +242,17 @@ function getSlugLiveIndexUrlProvider(host: ContentHostType, section: ArchiveGrou
     }
 }
 
+/**
+ * create a url provider for a core archive file.
+ * @param downloadsHost upstream host where the archive lives.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param suffix used to create the full name. e.g. '.zip'
+ * @param filename main name used for the archive.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns
+ */
 function getCoreArchiveUrlProvider(
     downloadsHost: string,
     host: ContentHostType,
@@ -153,6 +270,17 @@ function getCoreArchiveUrlProvider(
     }
 }
 
+/**
+ * create a list of url providers for all the main archive files of a release.
+ * @param suffixes list of suffixes to be used for the archive files.
+ * @param downloadsHost upstream host where the archive lives.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param filename main name used for the archive.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns list of higher-order functions that depend upon the release id.
+ */
 function getCoreArchiveListUrlProvider(
     suffixes: Array<string>,
     downloadsHost: string,
@@ -227,6 +355,15 @@ const DEFAULT_DOWNLOADS_BASE_DIRECTORY = './build';
 const DOWNLOADS_BASE_DIRECTORY = Deno.env.get('B2P_DOWNLOADS_BASE_DIRECTORY') ?? DEFAULT_DOWNLOADS_BASE_DIRECTORY;
 const DOWNLOADS_HOST = 'downloads.wordpress.org';
 
+/**
+ * default function definition for a factory function that returns a
+ * `StandardsLocations` object.
+ * The `StandardLocations` object is the configuration of the layout of
+ * resources across an arbitrary number of hosts.
+ * It describes the locations for a single upstream source with an arbitrary name.
+ * At this point, we only have one upstream source, but this may change if a
+ * set of federated repositories emerge.
+ */
 export default function getStandardLocations(sourceName: string = 'legacy'): StandardLocations {
     return {
         apiHost: 'api.wordpress.org',
@@ -314,7 +451,9 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
                 '-new-bundled.zip',
                 '-new-bundled.zip.md5',
                 '-new-bundled.zip.sha1',
-            ], DOWNLOADS_HOST, 'downloads', 'core', sourceName),
+            ],
+            DOWNLOADS_HOST, 'downloads', 'core', sourceName
+        ),
 
         coreStatusFilename: getFilenameSlugProvider('downloads', sourceName, 'core', 'release-status.json'),
 

@@ -136,7 +136,7 @@ async function gatherRequestGroups(
     await Deno.writeTextFile('./debug-fromReleases.json', json);
 
     const fromPlugins = await gatherPluginRequestGroups(options, locations, pluginList, locales);
-    const fromThemes = await gatherThemeReuqestGroups(options, locations, themeList, locales);
+    const fromThemes = await gatherThemeRequestGroups(options, locations, themeList, locales);
 
     return [...fromReleases, ...fromPlugins, ...fromThemes];
 }
@@ -161,9 +161,9 @@ async function gatherCoreRequestGroups(
         if (perRelease.translations && (perRelease.translations.length > 0)) {
             // for each translation
             for (const translation of perRelease.translations) {
-                await getChecksums(reporter, jreporter, locations, options, release, translation.language, false);
-                await getCredits(reporter, jreporter, locations, options, release, translation.language, false);
-                await getImporters(reporter, jreporter, locations, options, release, translation.language, false);
+                requests.push(getChecksums(locations, release, translation.language));
+                requests.push(getCredits(locations, release, translation.language));
+                requests.push(getImporters(locations, release, translation.language));
                 // zip file with l10n data
                 // *locale*.zip
                 requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
@@ -198,7 +198,7 @@ async function gatherPluginRequestGroups(
 }
 
 
-async function gatherThemeReuqestGroups(
+async function gatherThemeRequestGroups(
     options: CommandOptions,
     locations: StandardLocations,
     themeList: Array<ItemType>,

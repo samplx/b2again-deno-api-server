@@ -309,6 +309,11 @@ export type VersionLocaleVersionUrlProvider = (ctx: MigrationContext, version: s
 export type SlugOriginalUrlProvider = (ctx: MigrationContext, slug: string, original: string) => UrlProviderResult;
 
 /**
+ * how to generate a reference that depends upon a slug, and the original URL.
+ */
+export type SlugLocaleOriginalUrlProvider = (ctx: MigrationContext, slug: string, locale: string, original: string) => UrlProviderResult;
+
+/**
  * how to generate a reference that depends upon a slug, a version and the original URL.
  */
 export type SlugVersionOriginalUrlProvider = (ctx: MigrationContext, slug: string, version: string, original: string) => UrlProviderResult;
@@ -410,15 +415,15 @@ export interface StandardLocations {
     /**
      * JSON file containing data about file checksums. slug=release id,
      */
-    coreChecksumsV1_0: SlugLocaleUrlProvider;
+    coreChecksumsV1_0: SlugLocaleOriginalUrlProvider;
     /**
      * JSON file containing data about contributors. slug=release id.
      */
-    coreCreditsV1_1: SlugLocaleUrlProvider;
+    coreCreditsV1_1: SlugLocaleOriginalUrlProvider;
     /**
      * JSON file containing data about importers. slug=release id.
      */
-    coreImportersV1_1: SlugLocaleUrlProvider;
+    coreImportersV1_1: SlugLocaleOriginalUrlProvider;
 
     /**
      * ZIP file with localization data.

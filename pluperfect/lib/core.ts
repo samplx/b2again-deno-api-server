@@ -16,7 +16,7 @@
 import { ReleaseStatus, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { CommandOptions } from "./options.ts";
 import { downloadMetaJson, downloadMetaLegacyJson } from "./downloads.ts";
-import { StandardLocations } from "../../lib/standards.ts";
+import { StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { TranslationEntry } from "../../lib/api.ts";
 import { getInterestingSlugs } from "./item-lists.ts";
@@ -217,31 +217,19 @@ export async function getCoreTranslations(
 
 /**
  * Read a release and locale specific set of checksums from the upstream API.
- * @param reporter how to report non-error text.
- * @param jreporter how to report structured JSON.
  * @param locations how to access references.
- * @param options command-line options.
  * @param release id string for the release. e.g. '6.2.2'
  * @param locale specific locale. e.g. 'de_DE'
- * @param outdated true if latest transition is in progress.
  */
-export async function getChecksums(
-    reporter: ConsoleReporter,
-    jreporter: JsonReporter,
+export function getChecksums(
     locations: StandardLocations,
-    options: CommandOptions,
     release: string,
-    locale: string,
-    outdated: boolean
-): Promise<void> {
+    locale: string
+): UrlProviderResult {
     const apiUrl = new URL(`/core/checksums/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
-    const { host, pathname } = locations.coreChecksumsV1_0(locations.ctx, release, locale);
-    if (host && pathname) {
-        await downloadMetaJson(reporter, jreporter, host, pathname, apiUrl,
-            options.force || outdated, options.jsonSpaces);
-    }
+    return locations.coreChecksumsV1_0(locations.ctx, release, locale, apiUrl.toString());
 }
 
 /**
@@ -259,53 +247,33 @@ export async function getChecksums(
  * @param locale specific locale. e.g. 'de_DE'
  * @param outdated true if latest transition is in progress.
  */
-export async function getCredits(
-    reporter: ConsoleReporter,
-    jreporter: JsonReporter,
+export function getCredits(
     locations: StandardLocations,
-    options: CommandOptions,
     release: string,
-    locale: string,
-    outdated: boolean
-): Promise<void> {
+    locale: string
+): UrlProviderResult {
     const apiUrl = new URL(`/core/credits/1.1/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
-    const { host, pathname } = locations.coreCreditsV1_1(locations.ctx, release, locale);
-    if (host && pathname) {
-        await downloadMetaJson(reporter, jreporter, host, pathname, apiUrl,
-            options.force || outdated, options.jsonSpaces);
-    }
+    return locations.coreCreditsV1_1(locations.ctx, release, locale, apiUrl.toString());
 }
 
 
 /**
  * Read a release and locale specific set of importers from the upstream API.
- * @param reporter how to report non-error text.
- * @param jreporter how to report structured JSON.
  * @param locations how to access references.
- * @param options command-line options.
  * @param release id string for the release. e.g. '6.2.2'
  * @param locale specific locale. e.g. 'de_DE'
- * @param outdated true if latest transition is in progress.
  */
-export async function getImporters(
-    reporter: ConsoleReporter,
-    jreporter: JsonReporter,
+export function getImporters(
     locations: StandardLocations,
-    options: CommandOptions,
     release: string,
-    locale: string,
-    outdated: boolean
-): Promise<void> {
+    locale: string
+): UrlProviderResult {
     const apiUrl = new URL(`/core/importers/1.1/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
-    const { host, pathname } = locations.coreImportersV1_1(locations.ctx, release, locale);
-    if (host && pathname) {
-        await downloadMetaJson(reporter, jreporter, host, pathname, apiUrl,
-            options.force || outdated, options.jsonSpaces);
-    }
+    return locations.coreImportersV1_1(locations.ctx, release, locale, apiUrl.toString());
 }
 
 
