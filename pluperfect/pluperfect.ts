@@ -161,7 +161,6 @@ async function gatherCoreRequestGroups(
         if (perRelease.translations && (perRelease.translations.length > 0)) {
             // for each translation
             for (const translation of perRelease.translations) {
-                requests.push(getChecksums(locations, release, translation.language));
                 requests.push(getCredits(locations, release, translation.language));
                 requests.push(getImporters(locations, release, translation.language));
                 // zip file with l10n data
@@ -172,6 +171,7 @@ async function gatherCoreRequestGroups(
                     // 6 archive files per locale per release
                     // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
                     // these only exist if translation.version === release. i.e. they have been released.
+                    requests.push(getChecksums(locations, release, translation.language));
                     const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
                     requests.push(...zips);
                 }
