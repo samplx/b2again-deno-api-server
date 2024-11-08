@@ -223,26 +223,20 @@ async function downloadRequestGroup(
     options: CommandOptions,
     group: RequestGroup
 ): Promise<boolean> {
-    const results: ArchiveGroupStatus = {
-        source_name: group.sourceName,
-        section: group.section,
-        slug: group.slug,
-        is_outdated: false,
-        is_complete: false,
-        is_interesting: true,
-        when: Date.now(),
-        files: {}
-    };
+    const results: ArchiveGroupStatus = await loadGroupStatus(group);
+    if (downloadIsComplete(group, results)) {
+        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: true, skipped: true });
+        return true;
+    }
 
     let ok = true;
     for (const item of group.requests) {
         if (item.upstream && item.pathname && item.host) {
-            const url = new URL(item.url);
+            const url = new URL(item.upstream);
             const status = await downloadFile(reporter, jreporter, item.host, url, item.pathname, options.force);
-            const filename = url.pathname;
-            results.files[filename] = status;
+            results.files[item.pathname] = status;
             if (status.status === 'unknown') {
-                console.error(`Error: unknown status after download: ${filename}`);
+                console.error(`Error: unknown status after download: ${item.pathname}`);
             }
             ok = ok && (status.status === 'complete');
         }
@@ -261,6 +255,62 @@ async function downloadRequestGroup(
         jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: results.is_complete });
     }
     return results.is_complete;
+}
+
+/**
+ * determine if all of the requested files have already been downloaded successfully.
+ * @param group collection of files we need to download.
+ * @param status current status of the downloads.
+ */
+function downloadIsComplete(group: RequestGroup, status: ArchiveGroupStatus): boolean {
+    if (!status.is_complete) {
+        return false;
+    }
+    const inRequest: Record<string, true> = {};
+    const inStatus: Record<string, true> = {};
+    for (const r of group.requests) {
+        if (r.pathname) {
+            inRequest[r.pathname] = true;
+        }
+    }
+    for (const s in status.files) {
+        inStatus[s] = true;
+    }
+    const rKeys = Object.keys(inRequest);
+    const sKeys = Object.keys(inStatus);
+    if (rKeys.length !== sKeys.length) {
+        return false;
+    }
+    return true;
+}
+
+async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus> {
+    const results: ArchiveGroupStatus = {
+        source_name: group.sourceName,
+        section: group.section,
+        slug: group.slug,
+        is_outdated: false,
+        is_complete: false,
+        is_interesting: true,
+        when: Date.now(),
+        files: {}
+    };
+    if (group.statusFilename.pathname && false) {
+        try {
+            const contents = await Deno.readTextFile(group.statusFilename.pathname);
+            const parsed = JSON.parse(contents);
+            if (parsed &&
+                (typeof parsed === 'object') &&
+                ('files' in parsed) &&
+                (typeof parsed.files === 'object')
+            ) {
+                return parsed as ArchiveGroupStatus;
+            }
+        } catch (_) {
+            // return empty results
+        }
+    }
+    return results;
 }
 
 /**
