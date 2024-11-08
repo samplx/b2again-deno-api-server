@@ -66,7 +66,7 @@ export function getParseOptions(): ParseOptions {
             force: false,
             help: false,
             json: false,
-            jsonSpaces: '    ',
+            jsonSpaces: '',
             pace: `${DEFAULT_PACE}`,
             quiet: false,
             rehash: false,
