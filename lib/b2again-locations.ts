@@ -326,8 +326,8 @@ function getCoreL10nArchiveItemUrlProvider(
     groupName: string = 'read-only'
 ): VersionLocaleVersionUrlProvider {
     return function (ctx: MigrationContext, release: string, localeVersion: string, locale: string): UrlProviderResult {
-        const split = splitDirname(ctx, section, release);
-        const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${localeVersion}/${filename}-${release}${suffix}`;
+        const split = splitDirname(ctx, section, localeVersion);
+        const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}/${filename}-${release}${suffix}`;
         const upstream = `https://${downloadsHost}/release/${locale}/${filename}-${release}${suffix}`;
         return bindHost(ctx, host, relative, upstream);
     }
