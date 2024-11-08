@@ -166,11 +166,15 @@ async function gatherCoreRequestGroups(
                 requests.push(getImporters(locations, release, translation.language));
                 // zip file with l10n data
                 // *locale*.zip
+                // this is named after the locale version and should always exist
                 requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
-                // 6 archive files per locale per release
-                // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
-                const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
-                requests.push(...zips);
+                if (release === translation.version) {
+                    // 6 archive files per locale per release
+                    // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
+                    // these only exist if translation.version === release. i.e. they have been released.
+                    const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
+                    requests.push(...zips);
+                }
             }
         }
         outstanding.push({

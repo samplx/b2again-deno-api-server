@@ -306,9 +306,9 @@ function getCoreL10nArchiveUrlProvider(
     sourceName: string,
     groupName: string = 'read-only'
 ): VersionLocaleVersionUrlProvider {
-    return function (ctx: MigrationContext, release: string, localeVersion: string, locale: string): UrlProviderResult {
-        const split = splitDirname(ctx, section, release);
-        const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${localeVersion}/${locale}.zip`;
+    return function (ctx: MigrationContext, _release: string, localeVersion: string, locale: string): UrlProviderResult {
+        const split = splitDirname(ctx, section, localeVersion);
+        const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}.zip`;
         // translation/core/5.8-beta/af.zip
         const upstream = `https://${downloadsHost}/translation/core/${localeVersion}/${locale}.zip`;
         return bindHost(ctx, host, relative, upstream);

@@ -15,7 +15,7 @@
  */
 import { ReleaseStatus, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { CommandOptions } from "./options.ts";
-import { downloadMetaJson, downloadMetaLegacyJson } from "./downloads.ts";
+import { downloadMetaLegacyJson } from "./downloads.ts";
 import { StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { TranslationEntry } from "../../lib/api.ts";
