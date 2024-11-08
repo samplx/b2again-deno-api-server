@@ -34,17 +34,29 @@ import {
 } from "./standards.ts";
 
 /**
- * this is an implementation of a configuration object that is used by
- * the b2again CMS project.
- * since host and directory layouts is prone to endless bikesheding,
- * it is all isolated in this bit of code.
+ * this is an implementation of a configuration object.
+ * since the layout of directories and hosts is prone to
+ * endless bike-sheding, it is all isolated in this bit of code.
  * the code is functional in nature. lots of higher-level functions,
  * currying, and the like.
+ *
+ * all the functions must be pure or this won't work.
+ * if you don't know what a pure function is, you shouldn't touch this code.
+ *
  * in general, the `StandardLocations` object is full of functions that
  * are called in order to create values rather than values themselves.
- * truly an endless frontier of potential bikesheding, but this is the
+ * truly an endless frontier of potential options, but this is the
  * layout for the POC.
- * there is only a single 'downloads' host which holds all of the files.
+ *
+ * for b2again.org, there is only a single 'downloads' host which holds
+ * all of the files. the api, support and www hosts are virtual.
+ * pluperfect will generate URL's that reference these hosts, but they hold
+ * no archive files.
+ *
+ * the next configuration implementation will be a mirror of the upstream
+ * resources. upstream however, has resources split across multiple hosts,
+ * so the challenge was to create a set of code that could support both
+ * without configuring hundreds of thousands of URL's "by hand".
  */
 
 /**
@@ -85,14 +97,14 @@ function bindHost(
  */
 function getFilenameSlugProvider(
     host: ContentHostType,
-    sourceName: string,
     section: ArchiveGroupName,
+    sourceName: string,
     filename: string,
     groupName: string = 'meta'
 ): SlugUrlProvider {
     return function (ctx: MigrationContext, slug: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
-        return bindHost(ctx, host, `/${groupName}/${sourceName}/${section}/${split}/${filename}`);
+        return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}/${filename}`);
     }
 }
 
@@ -107,14 +119,14 @@ function getFilenameSlugProvider(
  */
 function getFilenameLocaleSlugProvider(
     host: ContentHostType,
-    sourceName: string,
     section: ArchiveGroupName,
+    sourceName: string,
     filename: string,
     groupName: string = 'meta'
 ): SlugLocaleOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, locale: string, original: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
-        return bindHost(ctx, host, `/${groupName}/${sourceName}/${section}/${split}/l10n/${locale}/${filename}`, original);
+        return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}/${filename}`, original);
     }
 }
 
@@ -128,12 +140,13 @@ function getFilenameLocaleSlugProvider(
  */
 function getCommonProvider(
     host: ContentHostType,
+    section: ArchiveGroupName,
     sourceName: string,
     filename: string,
     groupName: string = 'meta'
 ): CommonUrlProvider {
     return function (ctx: MigrationContext): UrlProviderResult {
-        const relative = `/${groupName}/${sourceName}/${filename}`;
+        const relative = `/${groupName}/${section}/${sourceName}/${filename}`;
         return bindHost(ctx, host, relative);
     }
 }
@@ -194,12 +207,13 @@ function getSlugOriginalLiveUrlProvider(
     host: ContentHostType,
     section: ArchiveGroupName,
     sourceName: string,
-    fileType: string
+    fileType: string,
+    groupName: string = 'live'
 ): SlugOriginalLiveUrlProvider {
     return function (ctx: MigrationContext, slug: string, original: string): LiveUrlProviderResult {
         const filename = path.basename(original);
         const split = splitDirname(ctx, section, slug);
-        const dirname = `/live/${section}/${sourceName}/${split}/${fileType}/`;
+        const dirname = `/${groupName}/${section}/${sourceName}/${split}/${fileType}/`;
         const lastDot = filename.lastIndexOf('.');
         const front = (lastDot < 0) ? filename : filename.substring(0, lastDot);
         const extension = (lastDot < 0) ? '' : filename.substring(lastDot).toLowerCase();
@@ -224,12 +238,13 @@ function getSlugLiveIndexUrlProvider(
     host: ContentHostType,
     section: ArchiveGroupName,
     sourceName: string,
-    fileType: string
+    fileType: string,
+    groupName: string = 'live'
 ): SlugOriginalLiveUrlProvider {
     return function (ctx: MigrationContext, slug: string, _original: string): LiveUrlProviderResult {
         const filename = 'index.html';
         const split = splitDirname(ctx, section, slug);
-        const dirname = `/live/${section}/${sourceName}/${split}/${fileType}/`;
+        const dirname = `/${groupName}/${section}/${sourceName}/${split}/${fileType}/`;
         const lastDot = filename.lastIndexOf('.');
         const front = (lastDot < 0) ? filename : filename.substring(0, lastDot);
         const extension = (lastDot < 0) ? '' : filename.substring(lastDot).toLowerCase();
@@ -290,15 +305,19 @@ function getCoreArchiveListUrlProvider(
     filename: string = 'wordpress',
     groupName: string = 'read-only'
 ): Array<SlugUrlProvider> {
-    const list: Array<SlugUrlProvider> = [];
-    suffixes.forEach((suffix) => {
-        const provider = getCoreArchiveUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName);
-        list.push(provider);
-    });
-    return list;
+    return suffixes.map((suffix) => getCoreArchiveUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName));
 }
 
 
+/**
+ * create a url provider for the core l10n zip file.
+ * @param downloadsHost upstream host where the archive lives.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher order function that depends upon the locale version and locale, the release is also provided.
+ */
 function getCoreL10nArchiveUrlProvider(
     downloadsHost: string,
     host: ContentHostType,
@@ -315,7 +334,17 @@ function getCoreL10nArchiveUrlProvider(
     }
 }
 
-
+/**
+ * create a url provider for one of the core l10n specific release files.
+ * @param downloadsHost upstream host where the archive lives.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param suffix used to create the full name. e.g. '.zip'
+ * @param filename main name used for the archive.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns higher-order function that depends upon the release, the locale and the locale version.
+ */
 function getCoreL10nArchiveItemUrlProvider(
     downloadsHost: string,
     host: ContentHostType,
@@ -333,6 +362,17 @@ function getCoreL10nArchiveItemUrlProvider(
     }
 }
 
+/**
+ * create a list of url providers for the core l10n specific release files.
+ * @param suffixes list of suffixes to add to the base filename.
+ * @param downloadsHost upstream host where the archive lives.
+ * @param host which host holds the content.
+ * @param section group of data: core, plugins, themes.
+ * @param sourceName name of the upstream source.
+ * @param filename main name used for the archive.
+ * @param groupName role the data plays: meta, read-only, live, stats.
+ * @returns list of higher-order functions that depends upon the release, the locale and the locale version.
+ */
 function getCoreL10nArchiveListUrlProvider(
     suffixes: Array<string>,
     downloadsHost: string,
@@ -342,17 +382,24 @@ function getCoreL10nArchiveListUrlProvider(
     filename: string = 'wordpress',
     groupName: string = 'read-only'
 ): Array<VersionLocaleVersionUrlProvider> {
-    const list: Array<VersionLocaleVersionUrlProvider> = [];
-    suffixes.forEach((suffix) => {
-        const provider = getCoreL10nArchiveItemUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName);
-        list.push(provider);
-    });
-    return list;
+    return suffixes.map((suffix) =>
+        getCoreL10nArchiveItemUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName));
 }
 
 
+/**
+ * default value for the downloads host's base directory.
+ */
 const DEFAULT_DOWNLOADS_BASE_DIRECTORY = './build';
-const DOWNLOADS_BASE_DIRECTORY = Deno.env.get('B2P_DOWNLOADS_BASE_DIRECTORY') ?? DEFAULT_DOWNLOADS_BASE_DIRECTORY;
+
+/**
+ * effective value for the downloads host's base directory.
+ */
+const DOWNLOADS_BASE_DIRECTORY = Deno.env.get('B2PP_DOWNLOADS_BASE_DIRECTORY') ?? DEFAULT_DOWNLOADS_BASE_DIRECTORY;
+
+/**
+ * upstream name of the downloads host.
+ */
 const DOWNLOADS_HOST = 'downloads.wordpress.org';
 
 /**
@@ -393,37 +440,37 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             nonAsciiPrefixSuffix: '+',
             liveMiddleLength: 20
         },
-        releases: getCommonProvider('downloads', sourceName, 'releases.json'),
-        legacyReleases: getCommonProvider('downloads', sourceName, `${sourceName}-releases.json`),
+        releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
+        legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
         // interestingReleases -- default to all releases
         // interestingLocales -- default to all locales
         pluginSlugs: {
-            defaults: getCommonProvider('downloads', sourceName, `plugins/defaults-list.json`),
-            effective: getCommonProvider('downloads', sourceName, `plugins/effective-list.json`),
-            featured: getCommonProvider('downloads', sourceName, `plugins/featured-list.json`),
+            defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
+            effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),
+            featured: getCommonProvider('downloads', 'plugins', sourceName, `featured-list.json`),
             interesting: undefined,
-            new: getCommonProvider('downloads', sourceName, `plugins/new-list.json`),
-            popular: getCommonProvider('downloads', sourceName, `plugins/popular-list.json`),
+            new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
+            popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
             rejected: undefined,
-            updated: getCommonProvider('downloads', sourceName, `plugins/updated-list.json`)
+            updated: getCommonProvider('downloads', 'plugins', sourceName, `updated-list.json`)
         },
         themeSlugs: {
-            defaults: getCommonProvider('downloads', sourceName, `themes/defaults-list.json`),
-            effective: getCommonProvider('downloads', sourceName, `themes/effective-list.json`),
-            featured: getCommonProvider('downloads', sourceName, `themes/featured-list.json`),
+            defaults: getCommonProvider('downloads', 'themes', sourceName, `defaults-list.json`),
+            effective: getCommonProvider('downloads', 'themes', sourceName, `effective-list.json`),
+            featured: getCommonProvider('downloads', 'themes', sourceName, `featured-list.json`),
             interesting: undefined,
-            new: getCommonProvider('downloads', sourceName, `themes/new-list.json`),
-            popular: getCommonProvider('downloads', sourceName, `themes/popular-list.json`),
+            new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
+            popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
             rejected: undefined,
-            updated: getCommonProvider('downloads', sourceName, `themes/updated-list.json`)
+            updated: getCommonProvider('downloads', 'themes', sourceName, `updated-list.json`)
         },
 
-        coreTranslationV1_0: getFilenameSlugProvider('downloads', sourceName, 'core', 'translations-1.0.json'),
-        legacyCoreTranslationV1_0: getFilenameSlugProvider('downloads', sourceName, 'core', `${sourceName}-translations-1.0.json`),
+        coreTranslationV1_0: getFilenameSlugProvider('downloads', 'core', sourceName, 'translations-1.0.json'),
+        legacyCoreTranslationV1_0: getFilenameSlugProvider('downloads', 'core', sourceName, `${sourceName}-translations-1.0.json`),
 
-        coreChecksumsV1_0: getFilenameLocaleSlugProvider('downloads', sourceName, 'core', 'checksums-1.0.json'),
-        coreCreditsV1_1: getFilenameLocaleSlugProvider('downloads', sourceName, 'core', 'credits-1.1.json'),
-        coreImportersV1_1: getFilenameLocaleSlugProvider('downloads', sourceName, 'core', 'importers-1.1.json'),
+        coreChecksumsV1_0: getFilenameLocaleSlugProvider('downloads', 'core', sourceName, 'checksums-1.0.json'),
+        coreCreditsV1_1: getFilenameLocaleSlugProvider('downloads', 'core', sourceName, 'credits-1.1.json'),
+        coreImportersV1_1: getFilenameLocaleSlugProvider('downloads', 'core', sourceName, 'importers-1.1.json'),
 
         coreL10nZip: getCoreL10nArchiveUrlProvider(DOWNLOADS_HOST, 'downloads', 'core', sourceName),
         coreL10nZips: getCoreL10nArchiveListUrlProvider(
@@ -455,14 +502,14 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             DOWNLOADS_HOST, 'downloads', 'core', sourceName
         ),
 
-        coreStatusFilename: getFilenameSlugProvider('downloads', sourceName, 'core', 'release-status.json'),
+        coreStatusFilename: getFilenameSlugProvider('downloads', 'core', sourceName, 'release-status.json'),
 
-        pluginSummary: getCommonProvider('downloads', sourceName, `plugins/summary.json`),
-        pluginFilename: getFilenameSlugProvider('downloads', sourceName, 'plugins', 'plugin.json'),
-        legacyPluginFilename: getFilenameSlugProvider('downloads', sourceName, 'plugins', `${sourceName}-plugin.json`),
-        pluginStatusFilename: getFilenameSlugProvider('downloads', sourceName, 'plugins', 'plugin-status.json'),
-        pluginTranslationV1_0: getFilenameSlugProvider('downloads', sourceName, 'plugins', 'translations-1.0.json'),
-        legacyPluginTranslationV1_0: getFilenameSlugProvider('downloads', sourceName, 'plugins', `${sourceName}-translations-1.0.json`),
+        pluginSummary: getCommonProvider('downloads', 'plugins', sourceName, `plugins/summary.json`),
+        pluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'plugin.json'),
+        legacyPluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', `${sourceName}-plugin.json`),
+        pluginStatusFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'plugin-status.json'),
+        pluginTranslationV1_0: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'translations-1.0.json'),
+        legacyPluginTranslationV1_0: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', `${sourceName}-translations-1.0.json`),
         pluginZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName),
         pluginL10nZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName, '/l10n'),
         pluginSupport: getSlugUrlProvider('support', 'plugins', sourceName, 'support'),
@@ -471,12 +518,12 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         pluginBanner: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'banners'),
         pluginPreview: getSlugLiveIndexUrlProvider('downloads', 'plugins', sourceName, 'preview'),
 
-        themeSummary: getCommonProvider('downloads', sourceName, `themes/summary.json`),
-        themeFilename: getFilenameSlugProvider('downloads', sourceName, 'themes', 'theme.json'),
-        legacyThemeFilename: getFilenameSlugProvider('downloads', sourceName, 'themes', `${sourceName}-theme.json`),
-        themeStatusFilename: getFilenameSlugProvider('downloads', sourceName, 'themes', 'theme-status.json'),
-        themeTranslationV1_0: getFilenameSlugProvider('downloads', sourceName, 'themes', 'translations-1.0.json'),
-        legacyThemeTranslationV1_0: getFilenameSlugProvider('downloads', sourceName, 'themes', `${sourceName}-translations-1.0.json`),
+        themeSummary: getCommonProvider('downloads', 'themes', sourceName, `summary.json`),
+        themeFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, 'theme.json'),
+        legacyThemeFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, `${sourceName}-theme.json`),
+        themeStatusFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, 'theme-status.json'),
+        themeTranslationV1_0: getFilenameSlugProvider('downloads', 'themes', sourceName, 'translations-1.0.json'),
+        legacyThemeTranslationV1_0: getFilenameSlugProvider('downloads', 'themes', sourceName, `${sourceName}-translations-1.0.json`),
         themeZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName),
         themeL10nZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName, '/l10n'),
         themeHomepage: getSlugUrlProvider('support', 'themes', sourceName, 'homepages'),

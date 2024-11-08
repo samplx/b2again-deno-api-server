@@ -237,7 +237,7 @@ async function downloadRequestGroup(
     let ok = true;
     for (const item of group.requests) {
         if (item.upstream && item.pathname && item.host) {
-            const url = new URL(item.upstream);
+            const url = new URL(item.url);
             const status = await downloadFile(reporter, jreporter, item.host, url, item.pathname, options.force);
             const filename = url.pathname;
             results.files[filename] = status;

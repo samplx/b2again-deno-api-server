@@ -37,7 +37,7 @@ export interface DownloadErrorInfo {
  * @param sourceUrl where to download the file.
  * @param targetFile where to put the file.
  * @param [force=false] if we must download file the even if we have a copy.
- * @param [needHash=false] if we should read the file if it exists to calculate the hash.
+ * @param [needHash=true] if we should read the file if it exists to calculate the hash.
  * @returns true if download was successful, false if not.
  */
 export async function downloadFile(
@@ -47,7 +47,7 @@ export async function downloadFile(
     sourceUrl: URL,
     targetFile: string,
     force: boolean = false,
-    needHash: boolean = false
+    needHash: boolean = true
 ): Promise<ArchiveFileSummary> {
     const targetDir = path.dirname(targetFile);
     let needed = false;
