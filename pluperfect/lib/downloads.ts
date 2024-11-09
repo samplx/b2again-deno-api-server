@@ -399,9 +399,10 @@ export async function downloadMetaLegacyJson<T extends Record<string, unknown>>(
         }
         await Deno.lstat(migratedJson);
         const contents = await Deno.readTextFile(legacyJson);
-        const json = JSON.parse(contents);
-        jreporter({operation: 'downloadMetaLegacyJson', action: 'read', host, url: url.toString(), migratedJson, legacyJson})
-        return json;
+        const raw = JSON.parse(contents);
+        const migrated = migrate(raw);
+        jreporter({operation: 'downloadMetaLegacyJson', action: 'read', host, url: url.toString(), migratedJson, legacyJson});
+        return [ raw, migrated ];
     } catch (_) {
         reporter(`fetch(${url}) > ${legacyJson}`);
         try {
