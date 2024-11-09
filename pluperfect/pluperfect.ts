@@ -144,8 +144,8 @@ async function gatherRequestGroups(
 ): Promise<Array<RequestGroup>> {
     const fromReleases = await gatherCoreRequestGroups(options, locations, releases, locales);
 
-    const json = JSON.stringify(fromReleases, null, options.jsonSpaces);
-    await Deno.writeTextFile('./debug-fromReleases.json', json);
+    // const json = JSON.stringify(fromReleases, null, options.jsonSpaces);
+    // await Deno.writeTextFile('./debug-fromReleases.json', json);
 
     const fromPlugins = await gatherPluginRequestGroups(options, locations, pluginList, locales);
     const fromThemes = await gatherThemeRequestGroups(options, locations, themeList, locales);
@@ -475,14 +475,14 @@ async function main(argv: Array<string>): Promise<number> {
         const releases = await getListOfReleases(reporter, jreporter, locations, releasesMap);
         reporter(`stage1: total number of releases: ${releases.length}`);
         const locales = await getListOfLocales(reporter, jreporter, locations);
-        const pluginLists = await getItemLists(reporter, jreporter, locations, 'plugin');
-        await saveItemLists(reporter, jreporter, locations, options, 'plugin', pluginLists);
+        // const pluginLists = await getItemLists(reporter, jreporter, locations, 'plugin');
+        // await saveItemLists(reporter, jreporter, locations, options, 'plugin', pluginLists);
 
         const themeLists = await getItemLists(reporter, jreporter, locations, 'theme');
         await saveItemLists(reporter, jreporter, locations, options, 'theme', themeLists);
 
         if ((status === 0) && (stopAfter > 1)) {
-            const remaining = await gatherRequestGroups(options, locations, releases, locales, pluginLists.effective, themeLists.effective);
+            const remaining = await gatherRequestGroups(options, locations, releases, locales, [] /* pluginLists.effective */, themeLists.effective);
             if ((status === 0) && (stopAfter > 2)) {
                 status = await stage3(options, remaining);
             }

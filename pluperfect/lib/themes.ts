@@ -297,7 +297,7 @@ function getThemeMigrator(
 ): (original: ThemeDetails) => ThemeDetails {
     return function (original: ThemeDetails): ThemeDetails {
         if (!original.version) {
-            return original;
+            throw new Deno.errors.NotSupported(`theme.version is not defined`);
         }
         const provider = getThemeMigratorProvider(locations, slug, original.version);
         const migrated = migrateStructure(provider, locations.ctx, original);
