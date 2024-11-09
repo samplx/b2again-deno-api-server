@@ -71,7 +71,8 @@ function bindHost(
     ctx: MigrationContext,
     host: ContentHostType,
     relative: string,
-    upstream?: string
+    upstream?: string,
+    is_readonly?: boolean
 ): UrlProviderResult {
     const url = new URL(relative, ctx.hosts[host].baseUrl);
     let pathname;
@@ -82,7 +83,8 @@ function bindHost(
         host,
         url,
         pathname,
-        upstream
+        upstream,
+        is_readonly
     };
 }
 
@@ -171,7 +173,7 @@ function getSlugVersionOriginalUrlProvider(
         const filename = path.basename(original);
         const split = splitDirname(ctx, section, slug);
         const relative = `/${groupName}/${section}/${sourceName}/${split}${postSplit}/${version}/${filename}`;
-        return bindHost(ctx, host, relative);
+        return bindHost(ctx, host, relative, original, true);
     }
 }
 
@@ -281,7 +283,7 @@ function getCoreArchiveUrlProvider(
         const split = splitDirname(ctx, section, release);
         const relative = `/${groupName}/${section}/${sourceName}/${split}/${filename}-${release}${suffix}`;
         const upstream = `https://${downloadsHost}/release/${filename}-${release}${suffix}`;
-        return bindHost(ctx, host, relative, upstream);
+        return bindHost(ctx, host, relative, upstream, true);
     }
 }
 
@@ -330,7 +332,7 @@ function getCoreL10nArchiveUrlProvider(
         const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}.zip`;
         // translation/core/5.8-beta/af.zip
         const upstream = `https://${downloadsHost}/translation/core/${localeVersion}/${locale}.zip`;
-        return bindHost(ctx, host, relative, upstream);
+        return bindHost(ctx, host, relative, upstream, true);
     }
 }
 
@@ -358,7 +360,7 @@ function getCoreL10nArchiveItemUrlProvider(
         const split = splitDirname(ctx, section, localeVersion);
         const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}/${filename}-${release}${suffix}`;
         const upstream = `https://${downloadsHost}/release/${locale}/${filename}-${release}${suffix}`;
-        return bindHost(ctx, host, relative, upstream);
+        return bindHost(ctx, host, relative, upstream, true);
     }
 }
 
