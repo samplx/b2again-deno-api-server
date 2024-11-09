@@ -185,6 +185,12 @@ async function gatherCoreRequestGroups(
                 }
             }
         }
+
+        // special case for en_US, since it is not a translation
+        requests.push(getCredits(locations, release, 'en_US'));
+        requests.push(getImporters(locations, release, 'en_US'));
+        requests.push(getChecksums(locations, release, 'en_US'));
+
         outstanding.push({
             sourceName: locations.ctx.sourceName,
             section: 'core',
@@ -218,6 +224,8 @@ async function gatherThemeRequestGroups(
 ): Promise<Array<RequestGroup>> {
     const outstanding: Array<RequestGroup> = [];
 
+    // for (const item of themeList) {
+    // }
     return outstanding;
 }
 
@@ -232,7 +240,7 @@ async function downloadRequestGroup(
     group: RequestGroup
 ): Promise<boolean> {
     const groupStatus: ArchiveGroupStatus = await loadGroupStatus(group);
-    if (downloadIsComplete(group, groupStatus)) {
+    if (downloadIsComplete(options, group, groupStatus)) {
         jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: true, skipped: true });
         return true;
     }
@@ -241,12 +249,24 @@ async function downloadRequestGroup(
     for (const item of group.requests) {
         if (item.upstream && item.pathname && item.host) {
             if (!options.force &&
+                !options.rehash &&
                 (groupStatus.files[item.pathname]?.status === 'complete')) {
                 // we've got this one
                 continue;
             }
-            const fileStatus = await downloadFile(reporter, jreporter, item, options.force);
-            groupStatus.files[item.pathname] = fileStatus;
+            const fileStatus = await downloadFile(reporter, jreporter, item, options.force, options.rehash);
+            if (groupStatus.files[item.pathname]) {
+                groupStatus.files[item.pathname].status = fileStatus.status;
+                groupStatus.files[item.pathname].when = fileStatus.when;
+                groupStatus.files[item.pathname].is_readonly = fileStatus.is_readonly;
+                if (options.rehash) {
+                    groupStatus.files[item.pathname].md5 = fileStatus.md5;
+                    groupStatus.files[item.pathname].sha1 = fileStatus.sha1;
+                    groupStatus.files[item.pathname].sha256 = fileStatus.sha256;
+                }
+            } else {
+                groupStatus.files[item.pathname] = fileStatus;
+            }
             if (fileStatus.status === 'unknown') {
                 throw new Deno.errors.BadResource(`unknown status after downloadFile`);
             }
@@ -267,26 +287,20 @@ async function downloadRequestGroup(
 /**
  * determine if all of the requested files have already been downloaded successfully.
  * @param group collection of files we need to download.
- * @param status current status of the downloads.
+ * @param groupStatus current status of the downloads.
  */
-function downloadIsComplete(group: RequestGroup, status: ArchiveGroupStatus): boolean {
-    if (!status.is_complete) {
+function downloadIsComplete(
+    options: CommandOptions,
+    group: RequestGroup,
+    groupStatus: ArchiveGroupStatus
+): boolean {
+    if (options.force || options.rehash || !groupStatus.is_complete) {
         return false;
     }
-    const inRequest: Record<string, true> = {};
-    const inStatus: Record<string, true> = {};
     for (const r of group.requests) {
-        if (r.pathname) {
-            inRequest[r.pathname] = true;
+        if (r.pathname && !groupStatus.files[r.pathname]) {
+            return false;
         }
-    }
-    for (const s in status.files) {
-        inStatus[s] = true;
-    }
-    const rKeys = Object.keys(inRequest);
-    const sKeys = Object.keys(inStatus);
-    if (rKeys.length !== sKeys.length) {
-        return false;
     }
     return true;
 }

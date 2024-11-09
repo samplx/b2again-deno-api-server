@@ -156,7 +156,7 @@ export async function downloadFile(
             };
         }
     }
-    jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: details.upstream, filename: details.url.pathname});
+    jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: details.upstream, filename: details.url.pathname, needHash, needed });
     return {
         host: details.host,
         filename: details.url.pathname,
@@ -210,16 +210,16 @@ export async function downloadFile(
  * @param info information about download statuses.
  * @returns true if save ok, false otherwise.
  */
-export async function saveDownloadStatus(statusFilename: string, info: ArchiveGroupStatus, spaces: string = ''): Promise<boolean> {
-    try {
-        const text = JSON.stringify(info, null, spaces);
-        await Deno.writeTextFile(statusFilename, text);
-    } catch (_) {
-        console.error(`Error: unable to save file ${statusFilename}`)
-        return false;
-    }
-    return true;
-}
+// export async function saveDownloadStatus(statusFilename: string, info: ArchiveGroupStatus, spaces: string = ''): Promise<boolean> {
+//     try {
+//         const text = JSON.stringify(info, null, spaces);
+//         await Deno.writeTextFile(statusFilename, text);
+//     } catch (_) {
+//         console.error(`Error: unable to save file ${statusFilename}`)
+//         return false;
+//     }
+//     return true;
+// }
 
 /**
  * This function is to prevent us reading an existing
@@ -381,7 +381,7 @@ export async function downloadLiveFile(
  * @param migrate function to map legacy to "modern" items.
  * @returns JSON parsed data from legacy format.
  */
-export async function downloadMetaLegacyJson(
+export async function downloadMetaLegacyJson<T extends Record<string, unknown>>(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     host: ContentHostType,
@@ -390,8 +390,8 @@ export async function downloadMetaLegacyJson(
     url: URL,
     force: boolean,
     spaces: string,
-    migrate: (original: unknown) => unknown
-): Promise<unknown> {
+    migrate: (original: T) => T
+): Promise<[ T, T ]> {
     try {
         if (force) {
             await Deno.remove(migratedJson, { recursive: true });
@@ -407,10 +407,10 @@ export async function downloadMetaLegacyJson(
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                const error = `${response.status} ${response.statusText}`;
+                const error = { error: `${response.status} ${response.statusText}` } as unknown as T;
                 reporter(`fetch failed: ${error}`);
                 jreporter({operation: 'downloadMetaLegacyJson', action: 'fetch', host, url: url.toString(), migratedJson, legacyJson, error})
-                return { error };
+                return [ error, error ] ;
             }
             const raw = await response.json();
             const rawText = JSON.stringify(raw, null, spaces);
@@ -421,10 +421,11 @@ export async function downloadMetaLegacyJson(
             await Deno.writeTextFile(migratedJson, migratedText);
             await Deno.writeTextFile(legacyJson, rawText);
             jreporter({operation: 'downloadMetaLegacyJson', action: 'fetch', host, url: url.toString(), migratedJson, legacyJson})
-            return raw;
+            return [ raw, migrated ];
         } catch (e) {
             jreporter({operation: 'downloadMetaLegacyJson', action: 'fetch', host, url: url.toString(), migratedJson, legacyJson, error: e})
-            return { error: e };
+            const error = { error: e } as unknown as T;
+            return [ error, error ] ;
         }
     }
 }

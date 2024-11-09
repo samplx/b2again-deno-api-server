@@ -20,8 +20,6 @@ import { StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { TranslationEntry } from "../../lib/api.ts";
 import { getInterestingSlugs } from "./item-lists.ts";
-// import { ArchiveFileSummary, ArchiveGroupStatus } from "../../lib/archive-status.ts";
-
 
 /**
  * migrated view of the 'releases' (stability-check) file.
@@ -37,7 +35,7 @@ export interface CoreReleases {
  * @param o thing to convert
  * @returns converted release object
  */
-function translateRelease(o: unknown): unknown {
+function translateRelease(o: Record<string, unknown>): Record<string, unknown> {
     const release: CoreReleases = {
         insecure: [],
         outdated: []
@@ -55,7 +53,7 @@ function translateRelease(o: unknown): unknown {
             }
         }
     }
-    return release;
+    return release as unknown as Record<string, unknown>;
 }
 
 /**
@@ -76,7 +74,7 @@ export async function getCoreReleases(
     if (!migratedJson.host || !legacyJson.pathname || !migratedJson.pathname) {
         throw new Deno.errors.NotSupported(`locations values for releases are not valid.`);
     }
-    const releases = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
+    const [ releases, _migrated ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
         legacyJson.pathname, migratedJson.pathname, apiUrl,
             true, options.jsonSpaces, translateRelease);
     if (releases && typeof releases === 'object') {
@@ -105,7 +103,7 @@ export async function getListOfReleases(
             return slugs;
         }
     }
-    const releases = translateRelease(releasesMap) as CoreReleases;
+    const releases = translateRelease(releasesMap) as unknown as CoreReleases;
     const list: Array<string> = [];
     if (releases.latest) {
         list.push(releases.latest, ...releases.outdated, ...releases.insecure);
@@ -129,8 +127,8 @@ export async function getListOfReleases(
 function getTranslationMigration(
     locations: StandardLocations,
     release: string
-): (original: unknown) => unknown {
-    return function (o: unknown): unknown {
+): (original: Record<string, unknown>) => Record<string, unknown> {
+    return function (o: Record<string, unknown>): Record<string, unknown> {
         if (o && (typeof o === 'object') && ('translations' in o) && Array.isArray(o.translations)) {
             const translations: Array<TranslationEntry> = [];
             for (const t of o.translations) {
@@ -145,8 +143,9 @@ function getTranslationMigration(
                     translations.push(t);
                 }
             }
-            return { translations };
+            return { translations } as unknown as Record<string, unknown>;
         }
+        return {};
     }
 }
 
@@ -202,11 +201,11 @@ export async function getCoreTranslations(
         throw new Deno.errors.NotSupported(`coreTranslationV1_0 location and legacyCoreTranslationV1_0 are misconfigured.`);
     }
     const migrator = getTranslationMigration(locations, release);
-    const originalTranslations = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
+    const [ originalTranslations, migratedTranslations ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
         legacyJson.pathname, migratedJson.pathname, apiUrl, options.force || outdated,
         options.jsonSpaces, migrator);
-    const originals = originalTranslations as TranslationsResultV1_0;
-    const migrated =  migrator(originals) as TranslationsResultV1_0;
+    const originals = originalTranslations as unknown as TranslationsResultV1_0;
+    const migrated = migratedTranslations as unknown as TranslationsResultV1_0;
     if (locales.length > 0) {
         // we need to filter the locales to the ones that are "interesting"
         return await filterTranslations(originals, migrated, locales,
