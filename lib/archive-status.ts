@@ -25,21 +25,38 @@ export type ArchiveFileStatus = 'unknown' | 'complete' | 'failed' | 'uninteresti
  * Describes an archive asset.
  */
 export interface ArchiveFileSummary {
-    /** which host has the content. */
+    /**
+     * which logical host has the content.
+     */
     host: ContentHostType;
-    /** relative pathname of the downloaded file. */
+    /**
+     * relative pathname of the downloaded file.
+     */
     filename: string;
-    /** current status. */
+    /**
+     * current status.
+     */
     status: ArchiveFileStatus;
-    /** true if the file may be out-of-date. */
-    is_outdated: boolean;
-    /** timestamp of when the status was defined. 0 if unknown/undefined. */
+    /**
+     * true if the file is read-only on the file system.
+     */
+    is_readonly: boolean;
+    /**
+     * timestamp of when the status was defined.
+     */
     when?: number;
-    /** optional SHA-256 message digest of the file contents as a hex string. */
+    /**
+     * optional SHA-256 message digest of the file contents as a hex string.
+     * must be defined for a file to be marked 'complete'.
+     */
     sha256?: string;
-    /** optional md5 message digest of the file contents as a hex string. */
+    /**
+     * optional md5 message digest of the file contents as a hex string.
+     */
     md5?: string;
-    /** optional SHA-1 message digest of the file contents as a hex string. */
+    /**
+     * optional SHA-1 message digest of the file contents as a hex string.
+     */
     sha1?: string;
 }
 
@@ -47,21 +64,29 @@ export interface ArchiveFileSummary {
  * Describes a group of downloaded files.
  */
 export interface ArchiveGroupStatus {
-    /** name of the upstream source. */
+    /**
+     * abritrary name of the upstream source.
+     */
     source_name: string;
-    /** what type of data is this about. */
+    /**
+     * what type of data is this about. core, plugins, themes.
+     */
     section: ArchiveGroupName;
-    /** group id. */
+    /**
+     * group id.
+     */
     slug: string;
-    /** true if the files may be out-of-date. */
-    is_outdated: boolean;
-    /** true if we have all the known files that we want. */
+    /**
+     * true if we have all the known files that we want.
+     */
     is_complete: boolean;
-    /** true if we want this archive. */
-    is_interesting: boolean;
-    /** timestamp of when the status was defined. */
+    /**
+     * timestamp of when the status was defined. timestamp of execution.
+     */
     when: number;
-    /** timestamp from when the upstream item was updated. */
+    /**
+     * timestamp from when the upstream item was updated - derived from upstream data.
+     */
     updated?: string;
     /**
      * hash map of key=filename, value = file information

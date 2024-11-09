@@ -141,6 +141,14 @@ async function gatherRequestGroups(
     return [...fromReleases, ...fromPlugins, ...fromThemes];
 }
 
+/**
+ * based upon the existing meta data determine what files are left to download.
+ * @param options command-line options.
+ * @param locations how to access resources.
+ * @param releases list of releases.
+ * @param locales list of locales.
+ * @returns
+ */
 async function gatherCoreRequestGroups(
     options: CommandOptions,
     locations: StandardLocations,
@@ -223,8 +231,8 @@ async function downloadRequestGroup(
     options: CommandOptions,
     group: RequestGroup
 ): Promise<boolean> {
-    const results: ArchiveGroupStatus = await loadGroupStatus(group);
-    if (downloadIsComplete(group, results)) {
+    const groupStatus: ArchiveGroupStatus = await loadGroupStatus(group);
+    if (downloadIsComplete(group, groupStatus)) {
         jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: true, skipped: true });
         return true;
     }
@@ -232,29 +240,28 @@ async function downloadRequestGroup(
     let ok = true;
     for (const item of group.requests) {
         if (item.upstream && item.pathname && item.host) {
-            const url = new URL(item.upstream);
-            const status = await downloadFile(reporter, jreporter, item.host, url, item.pathname, options.force);
-            results.files[item.pathname] = status;
-            if (status.status === 'unknown') {
-                console.error(`Error: unknown status after download: ${item.pathname}`);
+            if (!options.force &&
+                (groupStatus.files[item.pathname]?.status === 'complete')) {
+                // we've got this one
+                continue;
             }
-            ok = ok && (status.status === 'complete');
+            const fileStatus = await downloadFile(reporter, jreporter, item, options.force);
+            groupStatus.files[item.pathname] = fileStatus;
+            if (fileStatus.status === 'unknown') {
+                throw new Deno.errors.BadResource(`unknown status after downloadFile`);
+            }
+            if (fileStatus.status !== 'complete') {
+                ok = false;
+            } else if (!fileStatus.md5 || !fileStatus.sha1 || !fileStatus.sha256) {
+                throw new Deno.errors.BadResource(`message digests are required for complete status`);
+            }
         }
     }
-    results.is_complete = ok;
-    if (group.statusFilename.pathname) {
-        try {
-            const json = JSON.stringify(results, null, options.jsonSpaces);
-            const dirname = path.dirname(group.statusFilename.pathname);
-            await Deno.mkdir(dirname, { recursive: true });
-            await Deno.writeTextFile(group.statusFilename.pathname, json);
-        } catch (e) {
-            console.error(`Error: unable to save status: ${group.statusFilename.pathname} error: ${e}`);
-            jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, error: e });
-        }
-        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: results.is_complete });
-    }
-    return results.is_complete;
+    groupStatus.is_complete = ok;
+
+    await saveGroupStatus(group, groupStatus, options.jsonSpaces);
+
+    return groupStatus.is_complete;
 }
 
 /**
@@ -284,18 +291,42 @@ function downloadIsComplete(group: RequestGroup, status: ArchiveGroupStatus): bo
     return true;
 }
 
+/**
+ * save the group download status file.
+ * @param group collection of files to be downloaded.
+ * @param groupStatus results of the download effort.
+ * @param jsonSpaces how to expand json. pretty or not?
+ */
+async function saveGroupStatus(group: RequestGroup, groupStatus: ArchiveGroupStatus, jsonSpaces: string): Promise<void> {
+    if (group.statusFilename.pathname) {
+        try {
+            const json = JSON.stringify(groupStatus, null, jsonSpaces);
+            const dirname = path.dirname(group.statusFilename.pathname);
+            await Deno.mkdir(dirname, { recursive: true });
+            await Deno.writeTextFile(group.statusFilename.pathname, json);
+        } catch (e) {
+            console.error(`Error: unable to save status: ${group.statusFilename.pathname} error: ${e}`);
+            jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, error: e });
+        }
+        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: groupStatus.is_complete });
+    }
+}
+
+/**
+ * attempt to read the status file, or initialize a new one.
+ * @param group collection of files to be downloaded.
+ * @returns previous group status, or an empty new one.
+ */
 async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus> {
     const results: ArchiveGroupStatus = {
         source_name: group.sourceName,
         section: group.section,
         slug: group.slug,
-        is_outdated: false,
         is_complete: false,
-        is_interesting: true,
         when: Date.now(),
         files: {}
     };
-    if (group.statusFilename.pathname && false) {
+    if (group.statusFilename.pathname) {
         try {
             const contents = await Deno.readTextFile(group.statusFilename.pathname);
             const parsed = JSON.parse(contents);

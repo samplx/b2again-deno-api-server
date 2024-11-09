@@ -214,6 +214,11 @@ export interface UrlProviderResult {
      * upstream version of the resource.
      */
     readonly upstream?: string;
+
+    /**
+     * should the file be read-only on the file system.
+     */
+    readonly is_readonly?: boolean;
 }
 
 

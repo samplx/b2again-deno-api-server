@@ -20,7 +20,7 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import * as path from "jsr:@std/path";
 import { ArchiveFileSummary, ArchiveGroupStatus } from "../../lib/archive-status.ts";
-import { ContentHostType } from "../../lib/standards.ts";
+import { ContentHostType, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 
 /**
  * A simple Either-like interface for an error (left-side) value.
@@ -43,18 +43,19 @@ export interface DownloadErrorInfo {
 export async function downloadFile(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    host: ContentHostType,
-    sourceUrl: URL,
-    targetFile: string,
+    details: UrlProviderResult,
     force: boolean = false,
     needHash: boolean = true
 ): Promise<ArchiveFileSummary> {
-    const targetDir = path.dirname(targetFile);
+    if (!details.host || !details.pathname || !details.upstream) {
+        throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
+    }
+    const targetDir = path.dirname(details.pathname);
     let needed = false;
     try {
-        const fileInfo = await Deno.lstat(targetFile)
+        const fileInfo = await Deno.lstat(details.pathname)
         if (!fileInfo.isFile || force) {
-            await Deno.remove(targetFile, { recursive: true });
+            await Deno.remove(details.pathname, { recursive: true });
             needed = true;
         }
     } catch (_) {
@@ -69,22 +70,22 @@ export async function downloadFile(
     const sha256hash = createHash('sha256');
 
     if (needed) {
-        reporter(`fetch(${sourceUrl}) > ${targetFile}`);
+        reporter(`fetch(${details.upstream}) > ${details.pathname}`);
         try {
             await Deno.mkdir(targetDir, { recursive: true });
-            const output = createWriteStream(targetFile, {
+            const output = createWriteStream(details.pathname, {
                 flags: 'wx',
                 encoding: 'binary'
             });
-            const response = await fetch(sourceUrl);
+            const response = await fetch(details.upstream);
             if (!response.ok || !response.body) {
                 output.close();
-                jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: sourceUrl.toString(), targetFile, error: `${response.status}`});
+                jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.url.pathname, error: `${response.status}`});
                 return {
-                    host,
-                    filename: targetFile,
+                    host: details.host,
+                    filename: details.url.pathname,
                     status: 'failed',
-                    is_outdated: true,
+                    is_readonly: false,
                     when
                 };
             }
@@ -99,31 +100,37 @@ export async function downloadFile(
             sha256 = sha256hash.digest('hex');
             output.close();
         } catch (e) {
-            console.error(`Error: unable to save file: ${targetFile}`);
-            jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: sourceUrl.toString(), targetFile, error: e});
+            console.error(`Error: unable to save file: ${details.pathname}`);
+            jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.url.pathname, error: e});
             return {
-                host,
-                filename: targetFile,
+                host: details.host,
+                filename: details.url.pathname,
                 status: 'failed',
-                is_outdated: true,
+                is_readonly: false,
                 when
             };
         }
     } else if (needHash) {
         try {
             return new Promise((resolve, reject) => {
-                const input = createReadStream(targetFile);
+                if (!details.host || !details.pathname || !details.upstream) {
+                    throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
+                }
+                const input = createReadStream(details.pathname);
                 input
                     .on('end', () => {
+                        if (!details.host || !details.pathname || !details.upstream) {
+                            throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
+                        }
                         sha256 = sha256hash.digest('hex');
                         md5 = md5hash.digest('hex');
                         sha1 = sha1hash.digest('hex');
-                        jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: sourceUrl.toString(), targetFile});
+                        jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.url.pathname});
                         resolve ({
-                            host,
-                            filename: targetFile,
+                            host: details.host,
+                            filename: details.pathname,
                             status: 'complete',
-                            is_outdated: false,
+                            is_readonly: false,
                             when,
                             sha256,
                             md5,
@@ -138,23 +145,23 @@ export async function downloadFile(
                     .on('error', reject);
             });
         } catch (e) {
-            console.error(`Error: ${e} unable to read file to compute hashes: ${targetFile}`);
-            jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: sourceUrl.toString(), targetFile, error: e});
+            console.error(`Error: ${e} unable to read file to compute hashes: ${details.pathname}`);
+            jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.url.pathname, error: e});
             return {
-                host,
-                filename: targetFile,
+                host: details.host,
+                filename: details.pathname,
                 status: 'failed',
-                is_outdated: true,
+                is_readonly: false,
                 when,
             };
         }
     }
-    jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: sourceUrl.toString(), targetFile});
+    jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: details.upstream, filename: details.url.pathname});
     return {
-        host,
-        filename: targetFile,
+        host: details.host,
+        filename: details.url.pathname,
         status: 'complete',
-        is_outdated: false,
+        is_readonly: !!details.is_readonly,
         when,
         sha256,
         md5,
@@ -234,7 +241,7 @@ export function mergeDownloadInfo(existing: undefined | ArchiveFileSummary, rece
         filename,
         when,
         status: nStatus,
-        is_outdated: false,
+        is_readonly: recent.is_readonly,
         md5,
         sha256,
         sha1
@@ -253,30 +260,30 @@ export function mergeDownloadInfo(existing: undefined | ArchiveFileSummary, rece
  * @param rehash compute message digests of existing file.
  * @returns information about the download.
  */
-export async function downloadZip(
-    reporter: ConsoleReporter,
-    jreporter: JsonReporter,
-    host: ContentHostType,
-    sourceUrl: URL,
-    zipFilename: string,
-    force: boolean,
-    rehash: boolean
-): Promise<ArchiveFileSummary> {
-    try {
-        await Deno.chmod(zipFilename, 0o644);
-    } catch (_) {
-        // ignored, wait for download to fail.
-    }
-    const info = await downloadFile(reporter, jreporter, host, sourceUrl, zipFilename, force, rehash);
-    try {
-        await Deno.chmod(zipFilename, 0o444);
-        jreporter({operation: 'downloadZip', zipFilename});
-    } catch (e) {
-        jreporter({operation: 'downloadZip', zipFilename, error: e});
-        reporter(`Warning: chmod(${zipFilename}, 0o444) failed`);
-    }
-    return info;
-}
+// async function downloadZip(
+//     reporter: ConsoleReporter,
+//     jreporter: JsonReporter,
+//     host: ContentHostType,
+//     sourceUrl: URL,
+//     zipFilename: string,
+//     force: boolean,
+//     rehash: boolean
+// ): Promise<ArchiveFileSummary> {
+//     try {
+//         await Deno.chmod(zipFilename, 0o644);
+//     } catch (_) {
+//         // ignored, wait for download to fail.
+//     }
+//     const info = await downloadFile(reporter, jreporter, host, sourceUrl, zipFilename, force, rehash);
+//     try {
+//         await Deno.chmod(zipFilename, 0o444);
+//         jreporter({operation: 'downloadZip', zipFilename});
+//     } catch (e) {
+//         jreporter({operation: 'downloadZip', zipFilename, error: e});
+//         reporter(`Warning: chmod(${zipFilename}, 0o444) failed`);
+//     }
+//     return info;
+// }
 
 /**
  * Add a cache friendly middle section to a filename.
@@ -320,6 +327,7 @@ function liveFilename(
 export async function downloadLiveFile(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
+    locations: StandardLocations,
     host: ContentHostType,
     sourceUrl: URL,
     targetDir: string,
@@ -327,7 +335,11 @@ export async function downloadLiveFile(
     middleLength: number
 ): Promise<ArchiveFileSummary> {
     const filename = path.join(targetDir, liveFilename(originalName, 'download', middleLength));
-    const info = await downloadFile(reporter, jreporter, host, sourceUrl, filename, true);
+    if (!locations.ctx.hosts[host] || !locations.ctx.hosts[host].baseUrl) {
+        throw new Deno.errors.NotSupported(`${host} is not defined in migration context`);
+    }
+    const details = { host, upstream: sourceUrl.toString(), filename, url: sourceUrl };
+    const info = await downloadFile(reporter, jreporter, details, true);
     if (middleLength === 0) {
         jreporter({operation: 'downloadLiveFile', filename});
         return info;
