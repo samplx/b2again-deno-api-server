@@ -192,6 +192,20 @@ function getSlugVersionOriginalUrlProvider(
     }
 }
 
+function getSlugVersionLocaleUrlProvider(
+    host: ContentHostType,
+    section: ArchiveGroupName,
+    sourceName: string,
+    groupName: string= 'read-only'
+): SlugVersionOriginalUrlProvider {
+    return function (ctx: MigrationContext, slug: string, version: string, locale: string): UrlProviderResult {
+        const split = splitDirname(ctx, section, slug);
+        const relative = `/${groupName}/${section}/${sourceName}/${split}/${version}/l10n/${locale}.zip`;
+        const original = `https://downloads.wordpress.org/translation/${section}/${slug}/${version}/${locale}.zip`;
+        return bindHost(ctx, host, relative, original, true);
+    }
+}
+
 /**
  * create a url provider that depends upon a slug and the original url.
  * @param host which host holds the content.
@@ -528,7 +542,7 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         pluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, 'translations-1.0.json'),
         legacyPluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, `${sourceName}-translations-1.0.json`),
         pluginZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName),
-        pluginL10nZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName, '/l10n'),
+        pluginL10nZip: getSlugVersionLocaleUrlProvider('downloads', 'plugins', sourceName),
         pluginSupport: getSlugUrlProvider('support', 'plugins', sourceName, 'support'),
         pluginHomepage: getSlugUrlProvider('support', 'plugins', sourceName, 'homepages'),
         pluginScreenshot: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'screenshots'),
@@ -542,7 +556,7 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         themeTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'themes', sourceName, 'translations-1.0.json'),
         legacyThemeTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'themes', sourceName, `${sourceName}-translations-1.0.json`),
         themeZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName),
-        themeL10nZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName, '/l10n'),
+        themeL10nZip: getSlugVersionLocaleUrlProvider('downloads', 'themes', sourceName),
         themeHomepage: getSlugUrlProvider('support', 'themes', sourceName, 'homepages'),
         themeScreenshot: getSlugOriginalLiveUrlProvider('downloads', 'themes', sourceName, 'screenshots'),
         themePreview: getSlugLiveIndexUrlProvider('downloads', 'themes', sourceName, 'preview'),

@@ -374,7 +374,7 @@ export async function processTheme(
             if (details && (details.translations.length > 0)) {
                 for (const item of details.translations) {
                     if (item.version === version) {
-                        group.requests.push(locations.themeL10nZip(locations.ctx, slug, version, item.package));
+                        group.requests.push(locations.themeL10nZip(locations.ctx, slug, version, item.language));
                     }
                 }
             }

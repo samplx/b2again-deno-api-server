@@ -60,7 +60,9 @@ export function migrateStructure<Structure extends Record<string, unknown>>(
     const clone = structuredClone(upstream) as Record<string, unknown>;
     for (const key in Object.keys(migrator)) {
         if ((key in clone) && clone[key] && (typeof key === 'string') && migrator[key]) {
+            console.log(`migrator[${key}](ctx, clone[key]=${clone[key]})`);
             clone[key] = migrator[key](ctx, clone[key]);
+            console.log(`after clone[key]=${clone[key]}`);
         }
     }
     return clone as Structure;
