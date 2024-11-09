@@ -14,11 +14,11 @@
  *  limitations under the License.
  */
 
-import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from "../../lib/api.ts";
+import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationEntry, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { ArchiveFileSummary } from "../../lib/archive-status.ts";
 import { migrateStructure, MigrationProvider, MigrationStructureProvider } from "../../lib/migration.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { ContentHostType, LiveUrlProviderResult, MigrationContext, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
+import { ContentHostType, LiveUrlProviderResult, MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../../lib/standards.ts";
 import { RequestGroup } from "../pluperfect.ts";
 import { filterTranslations, getTranslationMigration } from "./core.ts";
 import { downloadMetaLegacyJson } from "./downloads.ts";
@@ -397,6 +397,7 @@ export async function processTheme(
     return group;
 }
 
+
 async function getThemeTranslations(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
@@ -416,7 +417,7 @@ async function getThemeTranslations(
     if (!migratedJson.host || !migratedJson.pathname || !legacyJson.pathname) {
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
-    const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, version);
+    const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
     const [ originalTranslations, migratedTranslations ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
         legacyJson.pathname, migratedJson.pathname, apiUrl, options.force || outdated,
         options.jsonSpaces, migrator);
