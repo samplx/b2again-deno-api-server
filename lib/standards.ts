@@ -144,52 +144,6 @@ export interface MigrationContext {
 }
 
 /**
- * a field level migration function. used to handle the migration of a
- * field value from the upstream to the downstream. we keep the processing
- * as generic as possible.
- */
-export type MigrationProvider<T> = (ctx: MigrationContext, upstream: unknown) => T;
-
-/**
- * a generic structure migration provider.
- * each field in the parametric parameter (i.e. generic) structure type
- * has an optional migration provider that can be used to change the upstream
- * field value as part of the migration process.
- */
-export type MigrationStructureProvider<Structure extends Record<string, unknown>> = {
-    [Property in keyof Structure]?: MigrationProvider<Structure[Property]>;
-}
-
-
-/**
- * Generic structure migrations. Used to migrate data from upstream
- * into the downstream format. This is where URL's and hosts get mapped
- * from upstream versions into how we want to maintain them. The
- * policy of how to perform the migration is isolated into the migrator
- * provider structure. It has a field with the same name as the parent
- * structure that will migrate the upstream field to its downstream
- * value.
- * @param migrator injectable migrator provider.
- * @param ctx migration context. information used to migration urls.
- * @param upstream content to be migrated as delivered from upstream.
- * @returns
- */
-export function migrateStructure<Structure extends Record<string, unknown>>(
-    migrator: MigrationStructureProvider<Structure>,
-    ctx: MigrationContext,
-    upstream: Structure
-): Structure {
-    const clone = structuredClone(upstream) as Record<string, unknown>;
-    for (const key in Object.keys(migrator)) {
-        if ((key in clone) && clone[key] && (typeof key === 'string') && migrator[key]) {
-            clone[key] = migrator[key](ctx, clone[key]);
-        }
-    }
-    return clone as Structure;
-}
-
-
-/**
  * result of mapping an upstream url into the downstream equivalent.
  * if there is an actual file, the pathname is the path to
  * the resource on the local system.
@@ -289,9 +243,9 @@ export type SlugLocaleUrlProvider = (ctx: MigrationContext, slug: string, locale
 export type SlugLocaleVersionUrlProvider = (ctx: MigrationContext, slug: string, locale: string, version: string) => UrlProviderResult;
 
 /**
- * how to generate a reference the depends upon a version and slug.
+ * how to generate a reference the depends upon a slug and a version.
  */
-export type VersionSlugUrlProvider = (ctx: MigrationContext, version: string, slug: string) => UrlProviderResult;
+export type SlugVersionUrlProvider = (ctx: MigrationContext, slug: string, version: string) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a version, slug and locale.
@@ -477,11 +431,11 @@ export interface StandardLocations {
     /**
      * JSON file containing translation data. slug=plugin id.
      */
-    pluginTranslationV1_0: SlugUrlProvider;
+    pluginTranslationV1_0: SlugVersionUrlProvider;
     /**
      * JSON file containing translation data in upstream format. slug=plugin id.
      */
-    legacyPluginTranslationV1_0: SlugUrlProvider;
+    legacyPluginTranslationV1_0: SlugVersionUrlProvider;
 
     /**
      * ZIP file containing a specific version of a plugin.
@@ -546,11 +500,11 @@ export interface StandardLocations {
     /**
      * JSON file containing translation data. slug=theme id.
      */
-    themeTranslationV1_0: SlugUrlProvider;
+    themeTranslationV1_0: SlugVersionUrlProvider;
     /**
      * JSON file containing translation data in upstream format. slug=theme id.
      */
-    legacyThemeTranslationV1_0: SlugUrlProvider;
+    legacyThemeTranslationV1_0: SlugVersionUrlProvider;
 
     /**
      * ZIP file containing a specific version of a theme.

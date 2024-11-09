@@ -16,7 +16,7 @@
 import { ReleaseStatus, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { CommandOptions } from "./options.ts";
 import { downloadMetaLegacyJson } from "./downloads.ts";
-import { StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
+import { MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../../lib/standards.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { TranslationEntry } from "../../lib/api.ts";
 import { getInterestingSlugs } from "./item-lists.ts";
@@ -120,12 +120,14 @@ export async function getListOfReleases(
  * The "outer" function captures the
  * parameters, and returns a function that takes a single parameter, like
  * what we need, but also knows what it needs to know.
- * @param locations how to find where things are.
+ * @param provider function to convert the package field
+ * @param ctx bag of information to allow url conversion.
  * @param release which release is being migrated.
  * @returns a function, that we can use in the migrate call when we load the JSON.
  */
-function getTranslationMigration(
-    locations: StandardLocations,
+export function getTranslationMigration(
+    provider: VersionLocaleVersionUrlProvider,
+    ctx: MigrationContext,
     release: string
 ): (original: Record<string, unknown>) => Record<string, unknown> {
     return function (o: Record<string, unknown>): Record<string, unknown> {
@@ -136,7 +138,7 @@ function getTranslationMigration(
                     ('package' in t) && (typeof t.package === 'string')) {
                     const translation = t as TranslationEntry;
                     const updated = { ... translation };
-                    const pkg = locations.coreL10nZip(locations.ctx, release, translation.version, translation.language);
+                    const pkg = provider(ctx, release, translation.version, translation.language);
                     updated.package = pkg.url.toString();
                     translations.push(updated);
                 } else {
@@ -149,7 +151,7 @@ function getTranslationMigration(
     }
 }
 
-async function filterTranslations(
+export async function filterTranslations(
     originals: TranslationsResultV1_0,
     migrated: TranslationsResultV1_0,
     locales: Array<string>,
@@ -200,7 +202,7 @@ export async function getCoreTranslations(
     if (!migratedJson.host || !migratedJson.pathname || !legacyJson.pathname) {
         throw new Deno.errors.NotSupported(`coreTranslationV1_0 location and legacyCoreTranslationV1_0 are misconfigured.`);
     }
-    const migrator = getTranslationMigration(locations, release);
+    const migrator = getTranslationMigration(locations.coreL10nZip, locations.ctx, release);
     const [ originalTranslations, migratedTranslations ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
         legacyJson.pathname, migratedJson.pathname, apiUrl, options.force || outdated,
         options.jsonSpaces, migrator);

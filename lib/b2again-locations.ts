@@ -30,7 +30,8 @@ import {
     SlugOriginalLiveUrlProvider,
     LiveUrlProviderResult,
     VersionLocaleVersionUrlProvider,
-    SlugLocaleOriginalUrlProvider
+    SlugLocaleOriginalUrlProvider,
+    SlugVersionUrlProvider
 } from "./standards.ts";
 
 /**
@@ -107,6 +108,20 @@ function getFilenameSlugProvider(
     return function (ctx: MigrationContext, slug: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
         return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}/${filename}`);
+    }
+}
+
+function getFilenameSlugVersionProvider(
+    host: ContentHostType,
+    section: ArchiveGroupName,
+    sourceName: string,
+    filename: string,
+    postSplit: string = '',
+    groupName: string = 'meta'
+): SlugVersionUrlProvider {
+    return function (ctx: MigrationContext, slug: string, version: string): UrlProviderResult {
+        const split = splitDirname(ctx, section, slug);
+        return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}${postSplit}/${version}/${filename}`);
     }
 }
 
@@ -508,10 +523,10 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
 
         pluginSummary: getCommonProvider('downloads', 'plugins', sourceName, `plugins/summary.json`),
         pluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'plugin.json'),
-        legacyPluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', `${sourceName}-plugin.json`),
-        pluginStatusFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'plugin-status.json'),
-        pluginTranslationV1_0: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'translations-1.0.json'),
-        legacyPluginTranslationV1_0: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', `${sourceName}-translations-1.0.json`),
+        legacyPluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, `${sourceName}-plugin.json`),
+        pluginStatusFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugin-status.json'),
+        pluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, 'translations-1.0.json'),
+        legacyPluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, `${sourceName}-translations-1.0.json`),
         pluginZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName),
         pluginL10nZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName, '/l10n'),
         pluginSupport: getSlugUrlProvider('support', 'plugins', sourceName, 'support'),
@@ -524,8 +539,8 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         themeFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, 'theme.json'),
         legacyThemeFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, `${sourceName}-theme.json`),
         themeStatusFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, 'theme-status.json'),
-        themeTranslationV1_0: getFilenameSlugProvider('downloads', 'themes', sourceName, 'translations-1.0.json'),
-        legacyThemeTranslationV1_0: getFilenameSlugProvider('downloads', 'themes', sourceName, `${sourceName}-translations-1.0.json`),
+        themeTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'themes', sourceName, 'translations-1.0.json'),
+        legacyThemeTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'themes', sourceName, `${sourceName}-translations-1.0.json`),
         themeZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName),
         themeL10nZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName, '/l10n'),
         themeHomepage: getSlugUrlProvider('support', 'themes', sourceName, 'homepages'),

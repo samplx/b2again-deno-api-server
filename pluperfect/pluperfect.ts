@@ -19,12 +19,14 @@ import { parseArgs, ParseOptions } from "jsr:@std/cli/parse-args";
 import { ConsoleReporter, ENABLED_CONSOLE_REPORTER, DISABLED_CONSOLE_REPORTER, JsonReporter, DISABLED_JSON_REPORTER, getISOtimestamp, ENABLED_JSON_REPORTER } from "../lib/reporter.ts";
 import { getParseOptions, printHelp, type CommandOptions } from "./lib/options.ts";
 import getStandardLocations from "../lib/b2again-locations.ts";
-import { ArchiveGroupName, StandardLocations, UrlProviderResult } from "../lib/standards.ts";
+import { ArchiveGroupName, LiveUrlProviderResult, StandardLocations, UrlProviderResult } from "../lib/standards.ts";
 import { getChecksums, getCoreReleases, getCoreTranslations, getCredits, getImporters, getListOfReleases } from "./lib/core.ts";
 import { getInterestingSlugs, getItemLists, ItemType, saveItemLists } from "./lib/item-lists.ts";
 import { downloadFile } from "./lib/downloads.ts";
 import { ArchiveGroupStatus } from "../lib/archive-status.ts";
 import * as path from "jsr:@std/path";
+import { compareVersions } from "https://deno.land/x/compare_versions@0.4.0/mod.ts";
+import { processTheme } from "./lib/themes.ts";
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -47,7 +49,7 @@ let jreporter: JsonReporter = DISABLED_JSON_REPORTER;
  */
 const parseOptions: ParseOptions = getParseOptions();
 
-interface RequestGroup {
+export interface RequestGroup {
     /**
      * which source is active.
      * name and meaning is installation specific.
@@ -73,6 +75,16 @@ interface RequestGroup {
      * how to get the data and where to put it.
      */
     requests: Array<UrlProviderResult>;
+
+    /**
+     * how to get live files.
+     */
+    liveRequests: Array<LiveUrlProviderResult>;
+
+    /**
+     * was there any error during processing
+     */
+    error?: string;
 }
 
 /**
@@ -158,6 +170,7 @@ async function gatherCoreRequestGroups(
     const outstanding: Array<RequestGroup> = [];
     for (const release of releases) {
         const requests: Array<UrlProviderResult> = [];
+        const liveRequests: Array<LiveUrlProviderResult> = [];
         const perRelease = await getCoreTranslations(reporter, jreporter, locations, options, release, false, locales);
 
         // 12 core archive files per release - 4 groups of 3
@@ -187,7 +200,9 @@ async function gatherCoreRequestGroups(
         }
 
         // special case for en_US, since it is not a translation
-        requests.push(getCredits(locations, release, 'en_US'));
+        if (compareVersions.compare(release, '3.1.4', '>')) {
+            requests.push(getCredits(locations, release, 'en_US'));
+        }
         requests.push(getImporters(locations, release, 'en_US'));
         requests.push(getChecksums(locations, release, 'en_US'));
 
@@ -196,7 +211,8 @@ async function gatherCoreRequestGroups(
             section: 'core',
             slug: release,
             statusFilename: locations.coreStatusFilename(locations.ctx, release),
-            requests
+            requests,
+            liveRequests
         });
     }
 
@@ -224,8 +240,10 @@ async function gatherThemeRequestGroups(
 ): Promise<Array<RequestGroup>> {
     const outstanding: Array<RequestGroup> = [];
 
-    // for (const item of themeList) {
-    // }
+    for (const item of themeList) {
+        const group = await processTheme(reporter, jreporter, options, locations, locales, item.slug);
+        outstanding.push(group);
+    }
     return outstanding;
 }
 

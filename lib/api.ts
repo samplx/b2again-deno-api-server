@@ -154,7 +154,7 @@ export interface ThemeParent {
  * entire theme. Fields may be filtered out in responses as
  * part of the request.
  */
-export interface ThemeDetails {
+export interface ThemeDetails extends Record<string, unknown> {
     slug: string;
     name?: string;
     version?: string;
@@ -221,7 +221,7 @@ export interface BannersInfo {
 /**
  *  Meta data about a single plugin.
  */
-export interface PluginDetails {
+export interface PluginDetails extends Record<string, unknown> {
     slug: string;
     name?: string;
     version?: string;
