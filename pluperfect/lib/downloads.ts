@@ -378,7 +378,6 @@ async function fetchMetaLegacyJson<T extends Record<string, unknown>>(
     const migrated = migrate(legacy);
     const migratedText = JSON.stringify(migrated, null, spaces);
     const metaDir = path.dirname(migratedJson);
-    console.log(`metaDir=${metaDir}, migratedJson=${migratedJson}, legacyJson=${legacyJson}`);
     await Deno.mkdir(metaDir, { recursive: true });
     await Deno.writeTextFile(migratedJson, migratedText);
     await Deno.writeTextFile(legacyJson, legacyText);
