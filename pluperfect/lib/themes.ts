@@ -20,7 +20,7 @@ import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { MigrationContext, StandardLocations  } from "../../lib/standards.ts";
 import { RequestGroup } from "../pluperfect.ts";
 import { filterTranslations, getTranslationMigration } from "./core.ts";
-import { downloadMetaLegacyJson } from "./downloads.ts";
+import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
 import { CommandOptions } from "./options.ts";
 
 
@@ -165,8 +165,8 @@ export async function createThemeRequestGroup(
     if (!legacyThemeFilename.pathname || !themeFilename.pathname || !legacyThemeFilename.host) {
         throw new Deno.errors.NotSupported(`legacyThemeFilename and themeFilename must define pathnames`);
     }
-    const [ themeInfo, _migratedTheme ] = await downloadMetaLegacyJson(reporter, jreporter, legacyThemeFilename.host,
-        legacyThemeFilename.pathname, themeFilename.pathname, url, true, options.jsonSpaces,
+    const [ changed, themeInfo, _migratedTheme ] = await probeMetaLegacyJson(reporter, jreporter, legacyThemeFilename.host,
+        legacyThemeFilename.pathname, themeFilename.pathname, url, options.jsonSpaces,
         getThemeMigrator(locations, slug));
 
     const group: RequestGroup = {
@@ -175,7 +175,8 @@ export async function createThemeRequestGroup(
         slug: slug,
         statusFilename: locations.themeStatusFilename(locations.ctx, slug),
         requests: [],
-        liveRequests: []
+        liveRequests: [],
+        noChanges: !changed
     };
     if (typeof themeInfo.error === 'string') {
         group.error = themeInfo.error;
@@ -200,7 +201,8 @@ export async function createThemeRequestGroup(
             }
             group.requests.push(translations, legacyTranslations);
             // since themes timestamps are largely absent, we always reload the current version's translations
-            const outdated = ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
+            // unless the theme.json file did not change at all.
+            const outdated = changed && ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
             const details = await getThemeTranslations(reporter, jreporter, locations, options, slug, version, outdated, locales);
             if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                 for (const item of details.translations) {

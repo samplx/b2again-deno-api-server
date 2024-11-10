@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import * as path from "jsr:@std/path";
-import { ArchiveFileSummary, ArchiveGroupStatus } from "../../lib/archive-status.ts";
+import { ArchiveFileSummary } from "../../lib/archive-status.ts";
 import { ContentHostType, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 
 /**
@@ -335,18 +335,16 @@ export async function downloadLiveFile(
 async function readMetaLegacyJson<T extends Record<string, unknown>> (
     legacyJson: string,
     migratedJson: string,
-    force: boolean,
-    migrate: (original: T) => T
+    force: boolean
 ): Promise<[ T, T ]> {
     if (force) {
         await Deno.remove(migratedJson, { recursive: true });
         await Deno.remove(legacyJson, { recursive: true });
     }
-    // this will throw if the migrated json file does not exist
-    await Deno.lstat(migratedJson);
-    const contents = await Deno.readTextFile(legacyJson);
-    const legacy = JSON.parse(contents);
-    const migrated = migrate(legacy);
+    const legacyContents = await Deno.readTextFile(legacyJson);
+    const legacy = JSON.parse(legacyContents);
+    const migratedContents = await Deno.readTextFile(migratedJson);
+    const migrated = JSON.parse(migratedContents);
     return [ legacy, migrated ];
 }
 
@@ -393,8 +391,8 @@ async function fetchMetaLegacyJson<T extends Record<string, unknown>>(
  * @param reporter how to report non-error information.
  * @param jreporter JSON structured logger.
  * @param host where the files live.
- * @param metaDir directory where to put the output.
- * @param filename name of the output file.
+ * @param legacyJson pathname to the legacy version of the data.
+ * @param migratedJson pathname to the migrated version of the data.
  * @param url source URL.
  * @param force true to force a download, false keeps any existing file
  * @param spaces JSON stringify spaces.
@@ -413,9 +411,9 @@ export async function downloadMetaLegacyJson<T extends Record<string, unknown>>(
     migrate: (original: T) => T
 ): Promise<[ T, T ]> {
     try {
-        const [ legacy, migrated ] = await readMetaLegacyJson(legacyJson, migratedJson, force, migrate);
+        const [ legacy, migrated ] = await readMetaLegacyJson(legacyJson, migratedJson, force);
         jreporter({operation: 'downloadMetaLegacyJson', action: 'read', host, url: url.toString(), migratedJson, legacyJson});
-        return [ legacy, migrated ];
+        return [ legacy as T, migrated as T];
     } catch (_) {
         reporter(`fetch(${url}) > ${legacyJson}`);
         try {
@@ -435,6 +433,84 @@ export async function downloadMetaLegacyJson<T extends Record<string, unknown>>(
             return [ error, error ] ;
         }
     }
+}
+
+/**
+ * download a JSON file to determine if it has changed compared
+ * to the copy already on disk (if any). Returns three values,
+ * a flag indicating if the file just downloaded was a change,
+ * the legacy copy of the data, and the migrated copy.
+ * @param reporter how to report non-error information.
+ * @param jreporter JSON structured logger.
+ * @param host where the files live.
+ * @param legacyJson pathname to the legacy version of the data.
+ * @param migratedJson pathname to the migrated version of the data.
+ * @param url source URL.
+ * @param spaces  JSON stringify spaces.
+ * @param migrate function to map legacy to "modern" items.
+ * @returns tuple of three values: changed, legacy and migrated.
+ */
+export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
+    reporter: ConsoleReporter,
+    jreporter: JsonReporter,
+    host: ContentHostType,
+    legacyJson: string,
+    migratedJson: string,
+    url: URL,
+    spaces: string,
+    migrate: (original: T) => T
+): Promise<[ boolean, T, T ]> {
+
+    // first check to see if the files exist, if not, they are changed
+    try {
+        await Deno.lstat(legacyJson);
+        await Deno.lstat(migratedJson);
+    } catch (_) {
+        const [ legacy, migrated ] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+        return [ true, legacy, migrated ];
+    }
+
+    // both the files exist, so we download a temporary copy
+    let tempLegacy;
+    try {
+        const metaDir = path.dirname(legacyJson);
+        tempLegacy = await Deno.makeTempFile({ dir: metaDir, prefix: 'probe-', suffix: '.json'});
+        const [ legacy, migrated ] = await readMetaLegacyJson(legacyJson, migratedJson, false);
+        const tempJson = await downloadMetaJson(reporter, jreporter, host, tempLegacy, url, true, spaces);
+        const tempContents = await Deno.readFile(tempLegacy);
+        const legacyContents = await Deno.readFile(legacyJson);
+        let same = true;
+        if (tempContents.length === legacyContents.length) {
+            for (let n=0; n < tempContents.length; n++) {
+                same = same && (tempContents.at(n) === legacyContents.at(n));
+                if (!same) {
+                    break;
+                }
+            }
+        }
+        if (same) {
+            await Deno.remove(tempLegacy, { recursive: true });
+            return [ false, legacy as T, migrated as T ];
+        }
+        await Deno.remove(legacyJson, { recursive: true });
+        const newMigrated = migrate(tempJson as T);
+        const newMigratedText = JSON.stringify(newMigrated, null, spaces);
+        await Deno.writeTextFile(migratedJson, newMigratedText);
+        await Deno.rename(tempLegacy, legacyJson);
+    } catch (_) {
+        // something failed during the upgrade process, so we will
+        // just download the file again below
+        if (tempLegacy) {
+            try {
+                // attempt to remove the temporary file if one was created.
+                await Deno.remove(tempLegacy, { recursive: true });
+            } catch (_) {
+                // ignore any errors.
+            }
+        }
+    }
+    const [ legacy, migrated ] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+    return [ true, legacy, migrated ];
 }
 
 /**

@@ -15,7 +15,7 @@
  */
 import { ReleaseStatus, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { CommandOptions } from "./options.ts";
-import { downloadMetaLegacyJson } from "./downloads.ts";
+import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
 import { MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../../lib/standards.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { TranslationEntry } from "../../lib/api.ts";
@@ -67,18 +67,17 @@ export async function getCoreReleases(
     jreporter: JsonReporter,
     options: CommandOptions,
     locations: StandardLocations
-): Promise<Record<string, ReleaseStatus>> {
+): Promise<[ boolean, Record<string, ReleaseStatus> ]> {
     const apiUrl = new URL(`/core/stable-check/1.0/`, `https://${locations.apiHost}/`);
     const legacyJson = locations.legacyReleases(locations.ctx);
     const migratedJson = locations.releases(locations.ctx);
     if (!migratedJson.host || !legacyJson.pathname || !migratedJson.pathname) {
         throw new Deno.errors.NotSupported(`locations values for releases are not valid.`);
     }
-    const [ releases, _migrated ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
-        legacyJson.pathname, migratedJson.pathname, apiUrl,
-            true, options.jsonSpaces, translateRelease);
+    const [ changed, releases, _migrated ] = await probeMetaLegacyJson(reporter, jreporter, migratedJson.host,
+        legacyJson.pathname, migratedJson.pathname, apiUrl, options.jsonSpaces, translateRelease);
     if (releases && typeof releases === 'object') {
-        return releases as Record<string, ReleaseStatus>;
+        return [ changed, releases as Record<string, ReleaseStatus> ];
     }
     throw new Deno.errors.BadResource(`unable to read core stable-check data`);
 }
@@ -276,225 +275,3 @@ export function getImporters(
     apiUrl.searchParams.append('locale', locale);
     return locations.coreImportersV1_1(locations.ctx, release, locale, apiUrl.toString());
 }
-
-
-// /**
-//  * Attempt to download the four groups of archive files (and associated message digests)
-//  * that are normally associated with a release. The "main" ZIP is always downloaded
-//  * for a release. If the `--zips` or `--full` options are given, we will attempt
-//  * to download the other three groups. There is a tar.gz format version, and two
-//  * optional format zip files: 'no-content' and 'new-bundled'.
-//  * @param options command-line options.
-//  * @param readOnlyDir where to store the result.
-//  * @param release id string for the release. e.g. '6.2.2'
-//  * @returns list of downloaded file statuses
-//  */
-// async function downloadReleaseFiles(options: CommandOptions, readOnlyDir: string, release: string): Promise<Array<ArchiveFileSummary>> {
-//     const primaryZipUrl = `https://${options.downloadsHost}/release/wordpress-${release}.zip`;
-//     const primaryZip = await downloadThree(options, readOnlyDir, primaryZipUrl);
-//     if (!options.full && !options.zips) {
-//         return [ ...primaryZip ];
-//     }
-//     const primaryTarGZUrl = `https://${options.downloadsHost}/release/wordpress-${release}.tar.gz`;
-//     const primaryTarGZ = await downloadThree(options, readOnlyDir, primaryTarGZUrl);
-//     const noContentZipUrl = `https://${options.downloadsHost}/release/wordpress-${release}-no-content.zip`;
-//     const noContentZip = await downloadThree(options, readOnlyDir, noContentZipUrl);
-//     const newBundledZipUrl = `https://${options.downloadsHost}/release/wordpress-${release}-new-bundled.zip`;
-//     const newBundledZip = await downloadThree(options, readOnlyDir, newBundledZipUrl);
-
-//     return [ ...primaryZip, ...primaryTarGZ, ...noContentZip, ...newBundledZip ];
-// }
-
-// /**
-//  * Download files associated with a core release.
-//  * @param options command-line options.
-//  * @param coreMetaDir top of the meta data tree.
-//  * @param release id string for the release. e.g. '6.2.2'
-//  * @returns
-//  */
-// async function processRelease(
-//     reporter: ConsoleReporter,
-//     jreporter: JsonReporter,
-//     locations: StandardLocations,
-//     options: CommandOptions,
-//     release: string,
-//     outdated: boolean
-// ): Promise<ArchiveGroupStatus> {
-//     const group: ArchiveGroupStatus = {
-//         source_name: '',
-//         section: 'core',
-//         slug: release,
-//         is_outdated: false,
-//         is_complete: false,
-//         is_interesting: true,
-//         when: Date.now(),
-//         files: {}
-//     };
-
-//     const releaseFiles = await downloadReleaseFiles(options, readOnlyDir, release);
-
-//     const t = await getCoreTranslations(reporter, jreporter, locations, options, release, outdated);
-//     for (const translation of t.translations) {
-//         if ((typeof translation.english_name === 'string') &&
-//             (typeof translation.language === 'string') &&
-//             (typeof translation.package === 'string') &&
-//             (typeof translation.version === 'string')) {
-//             await getChecksums(reporter, jreporter, locations, options, release, translation.language, outdated);
-//             await getCredits(options, localeMetaDir, release, translation.language, outdated);
-//             await getImporters(options, localeMetaDir, release, translation.language, outdated);
-
-//             if (options.zips || options.full) {
-//                 const localeReadOnlyDir = path.join(l10nDir, translation.language);
-//                 vreporter(`> mkdir -p ${localeReadOnlyDir}`);
-//                 await Deno.mkdir(localeReadOnlyDir, { recursive: true });
-//                 const localeZip = await downloadZip(reporter, translation.package, localeReadOnlyDir,
-//                         options.force, options.rehash);
-//                 releaseFiles.push(localeZip);
-//                 const wordpressZipUrl = `https://${options.downloadsHost}/release/${translation.language}/wordpress-${release}.zip`;
-//                 const wordpressZipInfo = await downloadThree(options, localeReadOnlyDir, wordpressZipUrl);
-//                 releaseFiles.push(...wordpressZipInfo);
-//             }
-//         }
-//     }
-
-//     // need to special case en_US, since it is not a translation
-//     const localeMetaDir = path.join(metaDir, 'l10n', 'en_US');
-//     vreporter(`> mkdir -p ${localeMetaDir}`);
-//     await Deno.mkdir(localeMetaDir, { recursive: true });
-//     await getChecksums(options, localeMetaDir, release, 'en_US', outdated);
-//     await getCredits(options, localeMetaDir, release, 'en_US', outdated);
-//     await getImporters(options, localeMetaDir, release, 'en_US', outdated);
-
-//     let ok = true;
-//     for (const item of releaseFiles) {
-//         group.files[item.filename] = item;
-//         if (item.status === 'failed') {
-//             ok = false;
-//         }
-//     }
-//     group.status = ok ? (options.full ? 'full' : 'partial') : 'failed';
-//     return group;
-// }
-
-// /**
-//  * Read the releases.json file to determine what the `latest` release
-//  * value was before it gets overwritten by the next download. So,
-//  * "previous" is logical, there is only one value in the file.
-//  * @param coreMetaDir where the data is located
-//  * @returns `latest` field value from JSON file, or undefined if none if found.
-//  */
-// async function getPreviousLatest(coreMetaDir: string): Promise<undefined | string> {
-//     const releaseJson = path.join(coreMetaDir, 'releases.json');
-//     let previous;
-//     try {
-//         const json = await Deno.readTextFile(releaseJson);
-//         const o = JSON.parse(json);
-//         if (o && (typeof o === 'object')) {
-//             if ('latest' in o) {
-//                 return o.latest;
-//             }
-//         }
-//     } catch (_) {
-//         console.error(`Warning: unable to read or parse releases.json`, _);
-//         // previous won't be set
-//     }
-//     return previous;
-// }
-
-
-// /**
-//  * Read a version-check data from the upstream API.
-//  * @param options command-line options.
-//  * @param coreMetaDir where to store the result.
-//  * @param outdated true if latest transition is in progress.
-//  */
-// async function getVersionCheck(options: CommandOptions, coreMetaDir: string, outdated: boolean): Promise<void> {
-//     const apiUrl = new URL(`/core/version-check/1.7/`, `https://${options.apiHost}/`);
-//     await downloadMetaJson(reporter, coreMetaDir, 'version-check-1.7.json', apiUrl,
-//             options.force || outdated, options.jsonSpaces);
-// }
-
-// async function processGlobalData(
-//     options: CommandOptions,
-//     coreMetaDir: string,
-//     outdated: boolean,
-//     _info: GroupDownloadStatusInfo
-// ): Promise<void> {
-//     await getVersionCheck(options, coreMetaDir, outdated);
-// }
-
-// /**
-//  * Handle the process of downloading a set of releases.
-//  * @param options command-line options
-//  * @returns exit code
-//  */
-// async function downloadCore(
-//     options: CommandOptions
-// ): Promise<number> {
-//     const info: GroupDownloadStatusInfo = {
-//         when: 0,
-//         map: {}
-//     };
-
-//     const coreMetaDir = path.join(options.documentRoot, 'core', 'meta', 'legacy');
-//     vreporter(`> mkdir -p ${coreMetaDir}`);
-//     await Deno.mkdir(coreMetaDir, { recursive: true });
-//     vreporter(`first we need to read the previous latest`);
-//     const previous = await getPreviousLatest(coreMetaDir);
-//     if (!previous) {
-//         console.error(`Warning: no previous latest version`);
-//     }
-//     vreporter(`next we need a list of releases`);
-//     const releasesMap = await getCoreReleases(options, coreMetaDir);
-//     const releases = translateRelease(releasesMap) as CoreReleases;
-//     if (!releases.latest) {
-//         console.error(`Error: no latest release.`);
-//         return 1;
-//     }
-
-//     const list = await getListOfReleases(releasesMap,  options.list, options.interestingFilename, previous);
-
-//     let transitioning = false;
-//     if (releases.latest !== previous) {
-//         reporter(`previous latest release:   ${previous}`);
-//         transitioning = true;
-//     } else {
-//         vreporter(`previous latest release:   ${previous}`);
-//     }
-//     reporter(`latest release:            ${releases.latest}`);
-//     const numberOfReleases = 1 + releases.insecure.length + releases.outdated.length;
-//     reporter(`number of releases:        ${numberOfReleases}`);
-//     reporter(`list:                      ${options.list}`);
-//     reporter(`number in list:            ${list.length}`);
-
-//     for (let n=0; n < list.length; n++) {
-//         const release = list[n];
-//         const group = await processRelease(options, coreMetaDir, release,
-//                 (transitioning && (previous === release))
-//         );
-//         info.map[release] = group;
-//     }
-//     await processGlobalData(options, coreMetaDir, transitioning, info);
-
-//     const statusFilename = path.join(coreMetaDir, options.statusFilename);
-//     const saved = await saveDownloadStatus(statusFilename, info);
-//     if (!saved) {
-//         return 1;
-//     }
-
-//     return 0;
-// }
-
-// /**
-//  * Determine if the provided list type name is valid.
-//  * @param name list requested
-//  * @returns true if it is valid
-//  */
-// function isValidListType(name: string): boolean {
-//     return (LIST_TYPE_VALUES as ReadonlyArray<string>).includes(name);
-// }
-
-// const LIST_TYPE_VALUES = [ 'all', 'latest', 'current', 'outdated', 'insecure', 'interesting', 'previous' ] as const;
-
-// type ListTypeValue = typeof LIST_TYPE_VALUES[number];
-

@@ -16,8 +16,8 @@
 
 import { ParseOptions } from "jsr:@std/cli/parse-args";
 
-/** default number of items processed between saves of the status file. */
-export const DEFAULT_PACE: number = 1000;
+/** default number of items without changes to be processed before stopping - 0 don't stop. */
+export const DEFAULT_NO_CHANGE_COUNT: number = 0;
 
 /**
  * Results of parsing the command-line.
@@ -35,8 +35,11 @@ export interface CommandOptions {
     /** spaces when rendering JSON. */
     jsonSpaces: string;
 
-    /** number of items processed between saves of the status file (as a string). */
-    pace: string;
+    /** where to load standard locations. */
+    locations?: string;
+
+    /** number of no change items processed before we stop. */
+    noChangeCount: string;
 
     /** if true, only report errors. */
     quiet: boolean;
@@ -47,8 +50,8 @@ export interface CommandOptions {
     /** true if failures should be retried. */
     retry: boolean;
 
-    /** stage to stop after (if any). */
-    stop?: string;
+    /** assume sync state (skip status checks when files don't change). */
+    synced: boolean;
 
     /** flag indicating more verbose output is desired. */
     verbose: boolean;
@@ -67,10 +70,11 @@ export function getParseOptions(): ParseOptions {
             help: false,
             json: false,
             jsonSpaces: '',
-            pace: `${DEFAULT_PACE}`,
+            noChangeCount: `${DEFAULT_NO_CHANGE_COUNT}`,
             quiet: false,
             rehash: false,
             retry: false,
+            synced: false,
             verbose: false,
             version: false,
         },
@@ -80,6 +84,7 @@ export function getParseOptions(): ParseOptions {
             'json',
             'quiet',
             'rehash',
+            'synced',
             'retry',
             'verbose',
             'version',
@@ -87,8 +92,7 @@ export function getParseOptions(): ParseOptions {
         string: [
             'jsonSpaces',
             'locations',
-            'pace',
-            'stop'
+            'noChangeCount',
         ],
         unknown: (arg: string): unknown => {
             console.error(`Warning: unrecognized option ignored '${arg}'`);
@@ -112,16 +116,18 @@ export function printHelp(programName: string, parseOptions: ParseOptions): void
     console.log(`    output JSON structured log.`);
     console.log(`--jsonSpaces=spaces        [${parseOptions.default?.jsonSpaces}]`);
     console.log(`    spaces used to delimit generated JSON files.`);
-    console.log(`--pace=number              [${parseOptions.default?.pace}]`);
-    console.log(`    number of items processed between status file saves.`);
+    console.log(`--locations=name`);
+    console.log(`    file to import for getStandardLocations() function.`);
+    console.log(`--noChangeCount=number     [${parseOptions.default?.noChangeCount}]`);
+    console.log(`    number of items without changes before we stop.`);
     console.log(`--quiet                    [${parseOptions.default?.quiet}]`);
     console.log(`    be quiet. supress non-error messages.`);
     console.log(`--rehash                   [${parseOptions.default?.rehash}]`);
     console.log(`    recalculate message digests (hashes).`);
     console.log(`--retry                    [${parseOptions.default?.retry}]`);
     console.log(`    retry to download failed files.`);
-    console.log(`--stop=after`);
-    console.log(`    stop after stage has completed.`);
+    console.log(`--synced                   [${parseOptions.default?.synced}]`);
+    console.log(`    assume repos start synced - limit checks for new files.`);
     console.log(`--verbose                  [${parseOptions.default?.verbose}]`);
     console.log(`    be verbose. include more informational messages.`);
     console.log(`--version`);

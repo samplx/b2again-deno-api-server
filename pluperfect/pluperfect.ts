@@ -21,12 +21,13 @@ import { getParseOptions, printHelp, type CommandOptions } from "./lib/options.t
 import getStandardLocations from "../lib/b2again-locations.ts";
 import { ArchiveGroupName, LiveUrlProviderResult, StandardLocations, UrlProviderResult } from "../lib/standards.ts";
 import { getChecksums, getCoreReleases, getCoreTranslations, getCredits, getImporters, getListOfReleases } from "./lib/core.ts";
-import { getInterestingSlugs, getInUpdateOrder, getItemLists, ItemType, saveItemLists } from "./lib/item-lists.ts";
+import { getInterestingSlugs, getInUpdateOrder, getItemLists, saveItemLists } from "./lib/item-lists.ts";
 import { downloadFile } from "./lib/downloads.ts";
 import { ArchiveGroupStatus } from "../lib/archive-status.ts";
 import * as path from "jsr:@std/path";
 import { compareVersions } from "https://deno.land/x/compare_versions@0.4.0/mod.ts";
 import { createThemeRequestGroup } from "./lib/themes.ts";
+import { createPluginRequestGroup } from "./lib/plugins.ts";
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -85,6 +86,11 @@ export interface RequestGroup {
      * was there any error during processing
      */
     error?: string;
+
+    /**
+     * were there any changes to the parent JSON file.
+     */
+    noChanges: boolean;
 }
 
 /**
@@ -126,6 +132,14 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
     return 0;
 }
 
+/**
+ * determine which files need to be downloaded for a core release.
+ * @param options command-line options.
+ * @param locations how to access resources.
+ * @param locales list of interesting locales.
+ * @param release release id, e.g. '6.6.2'
+ * @returns a request group to bring the repo into sync.
+ */
 async function createCoreRequestGroup(
     options: CommandOptions,
     locations: StandardLocations,
@@ -175,75 +189,10 @@ async function createCoreRequestGroup(
         slug: release,
         statusFilename: locations.coreStatusFilename(locations.ctx, release),
         requests,
-        liveRequests
+        liveRequests,
+        noChanges: false
     });
 
-}
-
-/**
- * based upon the existing meta data determine what files are left to download.
- * @param options command-line options.
- * @param locations how to access resources.
- * @param releases list of releases.
- * @param locales list of locales.
- * @returns
- */
-async function gatherCoreRequestGroups(
-    options: CommandOptions,
-    locations: StandardLocations,
-    releases: Array<string>,
-    locales: Array<string>
-): Promise<Array<RequestGroup>> {
-    const outstanding: Array<RequestGroup> = [];
-    for (const release of releases) {
-        const requests: Array<UrlProviderResult> = [];
-        const liveRequests: Array<LiveUrlProviderResult> = [];
-        const perRelease = await getCoreTranslations(reporter, jreporter, locations, options, release, false, locales);
-
-        // 12 core archive files per release - 4 groups of 3
-        // 2 groups are required .zip and .tar.gz
-        // 2 groups are optional -no-content.zip, and -new-bundled.zip
-        const archives = locations.coreZips.map((func) => func(locations.ctx, release));
-        requests.push(...archives);
-
-        if (perRelease.translations && (perRelease.translations.length > 0)) {
-            // for each translation
-            for (const translation of perRelease.translations) {
-                requests.push(getCredits(locations, release, translation.language));
-                requests.push(getImporters(locations, release, translation.language));
-                // zip file with l10n data
-                // *locale*.zip
-                // this is named after the locale version and should always exist
-                requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
-                if (release === translation.version) {
-                    // 6 archive files per locale per release
-                    // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
-                    // these only exist if translation.version === release. i.e. they have been released.
-                    requests.push(getChecksums(locations, release, translation.language));
-                    const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
-                    requests.push(...zips);
-                }
-            }
-        }
-
-        // special case for en_US, since it is not a translation
-        if (compareVersions.compare(release, '3.1.4', '>')) {
-            requests.push(getCredits(locations, release, 'en_US'));
-        }
-        requests.push(getImporters(locations, release, 'en_US'));
-        requests.push(getChecksums(locations, release, 'en_US'));
-
-        outstanding.push({
-            sourceName: locations.ctx.sourceName,
-            section: 'core',
-            slug: release,
-            statusFilename: locations.coreStatusFilename(locations.ctx, release),
-            requests,
-            liveRequests
-        });
-    }
-
-    return outstanding;
 }
 
 /**
@@ -317,6 +266,9 @@ function downloadIsComplete(
     group: RequestGroup,
     groupStatus: ArchiveGroupStatus
 ): boolean {
+    if (options.synced && group.noChanges) {
+        return true;
+    }
     if (options.force || options.rehash || !groupStatus.is_complete) {
         return false;
     }
@@ -382,9 +334,12 @@ async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus>
     return results;
 }
 
+/**
+ *
+ * @param locations
+ * @returns
+ */
 async function getListOfLocales(
-    reporter: ConsoleReporter,
-    jreporter: JsonReporter,
     locations: StandardLocations
 ): Promise<Array<string>> {
     if (locations.interestingLocales) {
@@ -396,12 +351,23 @@ async function getListOfLocales(
     return [];
 }
 
+/**
+ * handle the core section. the core release files and the associated
+ * l10n files and archives.
+ * @param options command-line options.
+ * @param locations how to get resources.
+ * @param locales list of locales we care about.
+ */
 async function coreSection(
     options: CommandOptions,
     locations: StandardLocations,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const releasesMap = await getCoreReleases(reporter, jreporter, options, locations);
+    const [ changed, releasesMap ] = await getCoreReleases(reporter, jreporter, options, locations);
+    if (!changed && options.synced) {
+        jreporter({ operation: 'coreSection', action: 'no-changes' });
+        return;
+    }
     const releases = await getListOfReleases(reporter, jreporter, locations, releasesMap);
     let total = 0;
     let successful = 0;
@@ -420,18 +386,28 @@ async function coreSection(
 }
 
 
+export function migrateRatings(ratings: Record<string, number>): Record<string, number> {
+    const updated = ratings;
+    for (const n in ratings) {
+        updated[n] = 0;
+    }
+    return updated;
+}
+
 async function pluginsSection(
     options: CommandOptions,
     locations: StandardLocations,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const releasesMap = await getCoreReleases(reporter, jreporter, options, locations);
-    const slugs = await getListOfReleases(reporter, jreporter, locations, releasesMap);
+    const pluginLists = await getItemLists(reporter, jreporter, locations, 'plugin');
+    await saveItemLists(reporter, jreporter, locations, options, 'plugin', pluginLists);
+
     let total = 0;
     let successful = 0;
     let failures = 0;
+    const slugs = getInUpdateOrder(pluginLists);
     for (const slug of slugs) {
-        const group = await createCoreRequestGroup(options, locations, locales, slug);
+        const group = await createPluginRequestGroup(reporter, jreporter, options, locations, locales, slug);
         const ok = await downloadRequestGroup(options, group);
         if (ok) {
             successful += 1;
@@ -495,14 +471,13 @@ async function main(argv: Array<string>): Promise<number> {
     reporter(`started:   ${timestamp}`);
     const locations = getStandardLocations();
 
-//    const stopAfter = parseInt(options.stop ?? '99');
     if (await checkPermissions(locations)) {
         return 1;
     }
-    const locales = await getListOfLocales(reporter, jreporter, locations);
+    const locales = await getListOfLocales(locations);
+    await pluginsSection(options, locations, locales);
     await themesSection(options, locations, locales);
     await coreSection(options, locations, locales);
-    // await pluginsSection(options, locations, locales);
     jreporter({operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
     reporter(`finished:   ${getISOtimestamp()}`);
     return 0;
