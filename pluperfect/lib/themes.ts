@@ -18,12 +18,17 @@ import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from "
 import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from "../../lib/migration.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { MigrationContext, StandardLocations  } from "../../lib/standards.ts";
-import { RequestGroup } from "../pluperfect.ts";
-import { filterTranslations, getTranslationMigration } from "./core.ts";
+import { migrateRatings, RequestGroup } from "../pluperfect.ts";
+import { filterTranslations, getTranslationMigration } from "../pluperfect.ts";
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
 import { CommandOptions } from "./options.ts";
 
 
+/**
+ * migrate theme author resources.
+ * @param author upstream author field.
+ * @returns modified author that includes `@wordpress.org` on upstream names.
+ */
 function migrateAuthor(author: unknown): string | ThemeAuthor {
     if (typeof author === 'string') {
         if (author.indexOf('@') < 0) {
@@ -43,14 +48,13 @@ function migrateAuthor(author: unknown): string | ThemeAuthor {
     return author as ThemeAuthor;
 }
 
-function migrateRatings(ratings: Record<string, number>): Record<string, number> {
-    const updated = ratings;
-    for (const n in ratings) {
-        updated[n] = 0;
-    }
-    return updated;
-}
-
+/**
+ * migrate parent theme information (homepage).
+ * @param locations how to find resources.
+ * @param slug theme slug.
+ * @param parent upstream information about the parent theme.
+ * @returns migrated information about the parent theme.
+ */
 function migrateParent(locations: StandardLocations, slug: string, parent: ThemeParent): ThemeParent {
     const migrated = { ... parent };
     if (parent.homepage) {
@@ -59,12 +63,24 @@ function migrateParent(locations: StandardLocations, slug: string, parent: Theme
     return parent;
 }
 
+/**
+ * migrate sections. remove reviews.
+ * @param sections upstream sections.
+ * @returns sections with reviews removed.
+ */
 function migrateSections(sections: Record<string, string>): Record<string, string> {
     const updated: Record<string, undefined | string> = { ... sections };
     updated.reviews = undefined;
     return updated as Record<string, string>;
 }
 
+/**
+ * convert the versions map to downstream.
+ * @param locations how to locate resources.
+ * @param slug theme id.
+ * @param versions upstream map of version/urls.
+ * @returns map of version/url with local url resources.
+ */
 function migrateVersions(
     locations: StandardLocations,
     slug: string,
@@ -78,6 +94,13 @@ function migrateVersions(
     return migrated;
 }
 
+/**
+ * build a migrator provider for a theme id and version.
+ * @param locations how to locate resources.
+ * @param slug theme id.
+ * @param version theme version id.
+ * @returns a migration structure provider that will help migrate the structure.
+ */
 function getThemeMigratorProvider(
     locations: StandardLocations,
     slug: string,
@@ -122,6 +145,12 @@ function getThemeMigratorProvider(
     };
 }
 
+/**
+ * create migration higher-order function.
+ * @param locations host to locale resources.
+ * @param slug theme id.
+ * @returns a function that migrates an upstream theme to the downstream version.
+ */
 function getThemeMigrator(
     locations: StandardLocations,
     slug: string,
@@ -193,6 +222,9 @@ export async function createThemeRequestGroup(
 
     if (themeInfo.versions) {
         for (const version in themeInfo.versions) {
+            if (version === 'trunk') {
+                continue;
+            }
             group.requests.push(locations.themeZip(locations.ctx, slug, version, themeInfo.versions[version]));
             const translations = locations.themeTranslationV1_0(locations.ctx, slug, version);
             const legacyTranslations = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
@@ -230,7 +262,18 @@ export async function createThemeRequestGroup(
     return group;
 }
 
-
+/**
+ * handle loading the themes translations.
+ * @param reporter how to report non-error text.
+ * @param jreporter how to report structured JSON.
+ * @param locations how to locale resources.
+ * @param options command-line options.
+ * @param slug theme id.
+ * @param version theme version id.
+ * @param outdated should files be considered stale.
+ * @param locales list of interesting locales.
+ * @returns filtered list of original translations.
+ */
 async function getThemeTranslations(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,

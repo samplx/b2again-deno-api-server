@@ -19,15 +19,15 @@ import { parseArgs, ParseOptions } from "jsr:@std/cli/parse-args";
 import { ConsoleReporter, ENABLED_CONSOLE_REPORTER, DISABLED_CONSOLE_REPORTER, JsonReporter, DISABLED_JSON_REPORTER, getISOtimestamp, ENABLED_JSON_REPORTER } from "../lib/reporter.ts";
 import { getParseOptions, printHelp, type CommandOptions } from "./lib/options.ts";
 import getStandardLocations from "../lib/b2again-locations.ts";
-import { ArchiveGroupName, LiveUrlProviderResult, StandardLocations, UrlProviderResult } from "../lib/standards.ts";
-import { getChecksums, getCoreReleases, getCoreTranslations, getCredits, getImporters, getListOfReleases } from "./lib/core.ts";
+import { ArchiveGroupName, LiveUrlProviderResult, MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../lib/standards.ts";
+import { createCoreRequestGroup, getCoreReleases, getListOfReleases } from "./lib/core.ts";
 import { getInterestingSlugs, getInUpdateOrder, getItemLists, saveItemLists } from "./lib/item-lists.ts";
 import { downloadFile } from "./lib/downloads.ts";
 import { ArchiveGroupStatus } from "../lib/archive-status.ts";
 import * as path from "jsr:@std/path";
-import { compareVersions } from "https://deno.land/x/compare_versions@0.4.0/mod.ts";
 import { createThemeRequestGroup } from "./lib/themes.ts";
 import { createPluginRequestGroup } from "./lib/plugins.ts";
+import { TranslationEntry, TranslationsResultV1_0 } from "../lib/api.ts";
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -93,6 +93,96 @@ export interface RequestGroup {
     noChanges: boolean;
 }
 
+
+/**
+ * We need to translate "legacy" translations into the modern version
+ * which involves changing the `package` URL. But the migrate function
+ * call only gets a single parameter? How do we inject the new URL?
+ * To solve this problem, we turn to our good friend a curried function.
+ * The "outer" function captures the
+ * parameters, and returns a function that takes a single parameter, like
+ * what we need, but also knows what it needs to know.
+ * @param provider function to convert the package field
+ * @param ctx bag of information to allow url conversion.
+ * @param release which release is being migrated.
+ * @returns a function, that we can use in the migrate call when we load the JSON.
+ */
+export function getTranslationMigration(
+    provider: VersionLocaleVersionUrlProvider,
+    ctx: MigrationContext,
+    release: string
+): (original: Record<string, unknown>) => Record<string, unknown> {
+    return function (o: Record<string, unknown>): Record<string, unknown> {
+        if (o && (typeof o === 'object') && ('translations' in o) && Array.isArray(o.translations)) {
+            const translations: Array<TranslationEntry> = [];
+            for (const t of o.translations) {
+                if (t && (typeof t === 'object') &&
+                    ('package' in t) && (typeof t.package === 'string')) {
+                    const translation = t as TranslationEntry;
+                    const updated = { ... translation };
+                    const pkg = provider(ctx, release, translation.version, translation.language);
+                    updated.package = pkg.url.toString();
+                    translations.push(updated);
+                } else {
+                    translations.push(t);
+                }
+            }
+            return { translations } as unknown as Record<string, unknown>;
+        }
+        return {};
+    }
+}
+
+/**
+ * filter translations to only include the selected locales. Also, update
+ * the on-disk files to only include those locales as well.
+ * @param originals upstream translations
+ * @param migrated local translations with updated urls.
+ * @param locales list of locales to support, empty is all.
+ * @param legacyJson pathname of the legacy JSON file.
+ * @param migratedJson pathname of the updated JSON file.
+ * @param spaces how to expand JSON spaces.
+ * @returns filtered version of the original translations.
+ */
+export async function filterTranslations(
+    originals: TranslationsResultV1_0,
+    migrated: TranslationsResultV1_0,
+    locales: ReadonlyArray<string>,
+    legacyJson: string,
+    migratedJson: string,
+    spaces: string
+): Promise<TranslationsResultV1_0> {
+    if (locales.length === 0) {
+        return originals;
+    }
+    const filteredMigratedTranslations = migrated.translations.filter((id) => locales.includes(id.language));
+    const filteredOriginalsTranslations = originals.translations.filter((id) => locales.includes(id.language));
+    const filteredMigrated: TranslationsResultV1_0 =  {
+        translations: filteredMigratedTranslations
+    };
+    const filteredOriginals: TranslationsResultV1_0 = {
+        translations: filteredOriginalsTranslations
+    }
+    const migratedText = JSON.stringify(filteredMigrated, null, spaces);
+    await Deno.writeTextFile(migratedJson, migratedText);
+    const originalsText = JSON.stringify(filteredOriginals, null, spaces);
+    await Deno.writeTextFile(legacyJson, originalsText);
+    return filteredOriginals;
+}
+
+/**
+ * "migrate" the ratings structure.
+ * @param ratings legacy ratings
+ * @returns zeroed ratings structure.
+ */
+export function migrateRatings(ratings: Record<string, number>): Record<string, number> {
+    const updated = ratings;
+    for (const n in ratings) {
+        updated[n] = 0;
+    }
+    return updated;
+}
+
 /**
  * Verify process has permissions needed.
  * @param locations standard location of resources.
@@ -130,69 +220,6 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
         return 1;
     }
     return 0;
-}
-
-/**
- * determine which files need to be downloaded for a core release.
- * @param options command-line options.
- * @param locations how to access resources.
- * @param locales list of interesting locales.
- * @param release release id, e.g. '6.6.2'
- * @returns a request group to bring the repo into sync.
- */
-async function createCoreRequestGroup(
-    options: CommandOptions,
-    locations: StandardLocations,
-    locales: ReadonlyArray<string>,
-    release: string
-): Promise<RequestGroup> {
-    const requests: Array<UrlProviderResult> = [];
-    const liveRequests: Array<LiveUrlProviderResult> = [];
-    const perRelease = await getCoreTranslations(reporter, jreporter, locations, options, release, false, locales);
-
-    // 12 core archive files per release - 4 groups of 3
-    // 2 groups are required .zip and .tar.gz
-    // 2 groups are optional -no-content.zip, and -new-bundled.zip
-    const archives = locations.coreZips.map((func) => func(locations.ctx, release));
-    requests.push(...archives);
-
-    if (perRelease.translations && (perRelease.translations.length > 0)) {
-        // for each translation
-        for (const translation of perRelease.translations) {
-            requests.push(getCredits(locations, release, translation.language));
-            requests.push(getImporters(locations, release, translation.language));
-            // zip file with l10n data
-            // *locale*.zip
-            // this is named after the locale version and should always exist
-            requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
-            if (release === translation.version) {
-                // 6 archive files per locale per release
-                // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
-                // these only exist if translation.version === release. i.e. they have been released.
-                requests.push(getChecksums(locations, release, translation.language));
-                const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
-                requests.push(...zips);
-            }
-        }
-    }
-
-    // special case for en_US, since it is not a translation
-    if (compareVersions.compare(release, '3.1.4', '>')) {
-        requests.push(getCredits(locations, release, 'en_US'));
-    }
-    requests.push(getImporters(locations, release, 'en_US'));
-    requests.push(getChecksums(locations, release, 'en_US'));
-
-    return ({
-        sourceName: locations.ctx.sourceName,
-        section: 'core',
-        slug: release,
-        statusFilename: locations.coreStatusFilename(locations.ctx, release),
-        requests,
-        liveRequests,
-        noChanges: false
-    });
-
 }
 
 /**
@@ -335,9 +362,9 @@ async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus>
 }
 
 /**
- *
- * @param locations
- * @returns
+ * determine which locales should be kept.
+ * @param locations how to get resources.
+ * @returns the list of interesting locales, or an empty list to indicate all.
  */
 async function getListOfLocales(
     locations: StandardLocations
@@ -373,7 +400,7 @@ async function coreSection(
     let successful = 0;
     let failures = 0;
     for (const release of releases) {
-        const group = await createCoreRequestGroup(options, locations, locales, release);
+        const group = await createCoreRequestGroup(reporter, jreporter, options, locations, locales, release);
         const ok = await downloadRequestGroup(options, group);
         if (ok) {
             successful += 1;
@@ -385,15 +412,12 @@ async function coreSection(
     jreporter({ operation: 'coreSection', action: 'complete', total, successful, failures });
 }
 
-
-export function migrateRatings(ratings: Record<string, number>): Record<string, number> {
-    const updated = ratings;
-    for (const n in ratings) {
-        updated[n] = 0;
-    }
-    return updated;
-}
-
+/**
+ * handle the download of plugins and the associated files.
+ * @param options command-line options.
+ * @param locations how to get resources.
+ * @param locales  list of locales we care about.
+ */
 async function pluginsSection(
     options: CommandOptions,
     locations: StandardLocations,
@@ -419,6 +443,12 @@ async function pluginsSection(
     jreporter({ operation: 'pluginsSection', action: 'complete', total, successful, failures });
 }
 
+/**
+ * handle the download of the themes and associated files.
+ * @param options command-line options.
+ * @param locations how to get resources.
+ * @param locales  list of locales we care about.
+ */
 async function themesSection(
     options: CommandOptions,
     locations: StandardLocations,

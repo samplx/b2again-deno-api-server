@@ -14,12 +14,12 @@
  *  limitations under the License.
  */
 
-import { BannersInfo, ContributorInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from "../../lib/api.ts";
+import { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from "../../lib/migration.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
 import { MigrationContext, StandardLocations } from "../../lib/standards.ts";
 import { migrateRatings, RequestGroup } from "../pluperfect.ts";
-import { filterTranslations, getTranslationMigration } from "./core.ts";
+import { filterTranslations, getTranslationMigration } from "../pluperfect.ts";
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
 import { CommandOptions } from "./options.ts";
 
@@ -36,36 +36,63 @@ function getPluginInfoUrl(apiHost: string, name: string): URL {
     return url;
 }
 
-function migrateAuthor(author: unknown): undefined | string{
-    if (typeof author === 'string') {
-        if (author.indexOf('@') < 0) {
-            return `${author}@wordpress.org`;
+/**
+ * migrate the src portion of the screenshots.
+ * @param locations how to find resources.
+ * @param ctx bag of information to convert urls.
+ * @param slug plugin id.
+ * @param legacy upstream version of the data.
+ * @returns migrated version with URL for local resources.
+ */
+function migrateScreenshots(
+    locations: StandardLocations,
+    ctx: MigrationContext,
+    slug: string,
+    legacy: Record<string, ScreenshotInfo>
+): Record<string, ScreenshotInfo> {
+    const updated = structuredClone(legacy);
+    for (const key of Object.keys(legacy)) {
+        if (updated[key] && (typeof updated[key].src === 'string')) {
+            updated[key].src = getLiveUrlFromProvider(ctx, locations.pluginScreenshot(ctx, slug, updated[key].src));
         }
     }
-    return undefined;
+    return updated;
 }
 
-function migrateContributors(legacy: Record<string, ContributorInfo>): Record<string, ContributorInfo> {
-    return legacy;
-}
-
-function migrateScreenshots(_ctx: MigrationContext, legacy: Record<string, ScreenshotInfo>): Record<string, ScreenshotInfo> {
-    return legacy;
-}
-
+/**
+ * migrate the map of version urls.
+ * @param locations how to find resources.
+ * @param slug plugin id.
+ * @param versions upstream map of resources.
+ * @returns migrated map of version/url pairs.
+ */
 function migrateVersions(
     locations: StandardLocations,
     slug: string,
     versions: Record<string, string>
 ): Record<string, string> {
-    const migrated: Record<string, string> = {};
+    const migrated: Record<string, undefined | string> = {};
     for (const version in versions) {
-        const url = getUrlFromProvider(locations.ctx, locations.pluginZip(locations.ctx, slug, version, versions[version]))
-        migrated[version] = url;
+        if (version === 'trunk') {
+            migrated[version] = undefined;
+        } else {
+            const url = getUrlFromProvider(locations.ctx, locations.pluginZip(locations.ctx, slug, version, versions[version]))
+            migrated[version] = url;
+        }
     }
-    return migrated;
+    return migrated as Record<string, string>;
 }
 
+/**
+ * migrate the "optional" banner field. Since it comes from a
+ * PHP JSON serialization process, an "empty" field is not null,
+ * but an empty array. if it is empty, we leave it alone, otherwise
+ * we convert the high and low fields if they exist.
+ * @param locations how to find resources.
+ * @param slug plugin id.
+ * @param original upstream banner resources.
+ * @returns migrated banner resources.
+ */
 function migrateBanners(
     locations: StandardLocations,
     slug: string,
@@ -85,14 +112,26 @@ function migrateBanners(
     return { high, low };
 }
 
-
+/**
+ * migrate the sections field. remove the reviews, since they are
+ * not part of the GPL sources.
+ * @param sections upstream sections field.
+ * @returns a copy with the reviews removed.
+ */
 function migrateSections(sections: Record<string, string>): Record<string, string> {
-    const updated: Record<string, undefined | string> = { ... sections };
+    const updated: Record<string, undefined | string> = structuredClone(sections);
     updated.reviews = undefined;
     return updated as Record<string, string>;
 }
 
-
+/**
+ * build the thing to do the migration. this builds the migrator, the actual
+ * migration is done later.
+ * @param locations how to access resources.
+ * @param slug plugin id.
+ * @param version plugin version id.
+ * @returns a migration structure provider that is used to migrate the plugin.
+ */
 function getPluginMigratorProvider(
     locations: StandardLocations,
     slug: string,
@@ -101,13 +140,9 @@ function getPluginMigratorProvider(
     const preview_link = (ctx: MigrationContext, url: unknown) =>
         getLiveUrlFromProvider(ctx, locations.pluginPreview(ctx, slug, `${url}`));
     const screenshots = (ctx: MigrationContext, legacy: unknown) =>
-        migrateScreenshots(ctx, legacy as Record<string, ScreenshotInfo>);
-    const author = (_ctx: MigrationContext, author: unknown) =>
-        migrateAuthor(author);
+        migrateScreenshots(locations, ctx, slug, legacy as Record<string, ScreenshotInfo>);
     const ratings = (_ctx: MigrationContext, ratings: unknown) =>
         migrateRatings(ratings as Record<string, number>);
-    const contributors = (_ctx: MigrationContext, contributors: unknown) =>
-        migrateContributors(contributors as Record<string, ContributorInfo>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
     const download_link = (ctx: MigrationContext, download_link: unknown) =>
         getUrlFromProvider(ctx, locations.pluginZip(ctx, slug, version, download_link as string));
@@ -120,8 +155,6 @@ function getPluginMigratorProvider(
     const banners = (_ctx: MigrationContext, banners: unknown) =>
         migrateBanners(locations, slug, banners as Array<unknown> | BannersInfo);
     return {
-        author,
-        contributors,
         ratings,
         rating: zero,
         num_ratings: zero,
@@ -138,6 +171,15 @@ function getPluginMigratorProvider(
     };
 }
 
+/**
+ * build a migrator function to handle migrating a plugin. most of the migration
+ * is done field by field using the MigrationStructureProvider and migrateStructue.
+ * there is also cross-field migration to update upstream URL's embedded in text
+ * inside of the sections fields.
+ * @param locations host to access resources.
+ * @param slug plugin id.
+ * @returns a migrator object that describes how to migrate the structure.
+ */
 function getPluginMigrator(
     locations: StandardLocations,
     slug: string,
@@ -206,7 +248,7 @@ export async function createPluginRequestGroup(
 
     if (pluginInfo.versions) {
         for (const version in pluginInfo.versions) {
-            if (pluginInfo.versions[version]) {
+            if ((version !== 'trunk') && pluginInfo.versions[version]) {
                 group.requests.push(locations.pluginZip(locations.ctx, slug, version, pluginInfo.versions[version]));
                 const translations = locations.pluginTranslationV1_0(locations.ctx, slug, version);
                 const legacyTranslations = locations.legacyPluginTranslationV1_0(locations.ctx, slug, version);
@@ -214,8 +256,7 @@ export async function createPluginRequestGroup(
                     throw new Deno.errors.NotSupported(`legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`);
                 }
                 group.requests.push(translations, legacyTranslations);
-                // since plugins timestamps are largely absent, we always reload the current version's translations
-                const outdated = ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
+                const outdated = changed && ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
                 const details = await getPluginTranslations(reporter, jreporter, locations, options, slug, version, outdated, locales);
                 if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                     for (const item of details.translations) {
@@ -251,7 +292,18 @@ export async function createPluginRequestGroup(
     return group;
 }
 
-
+/**
+ * determine which translations are available for a plugin version.
+ * @param reporter how to report non-error text.
+ * @param jreporter how to report structured JSON.
+ * @param locations how to find resources.
+ * @param options command-line options.
+ * @param slug plugin id.
+ * @param version plugin version id.
+ * @param outdated true if we need to download the resource again
+ * @param locales list of interesting locales
+ * @returns list of all of the translations for the plugin version.
+ */
 async function getPluginTranslations(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,

@@ -16,10 +16,11 @@
 import { ReleaseStatus, TranslationsResultV1_0 } from "../../lib/api.ts";
 import { CommandOptions } from "./options.ts";
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
-import { MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../../lib/standards.ts";
+import { LiveUrlProviderResult, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { TranslationEntry } from "../../lib/api.ts";
 import { getInterestingSlugs } from "./item-lists.ts";
+import { getTranslationMigration, filterTranslations, RequestGroup } from "../pluperfect.ts";
+import { compareVersions } from "https://deno.land/x/compare_versions@0.4.0/compare-versions.ts";
 
 /**
  * migrated view of the 'releases' (stability-check) file.
@@ -110,69 +111,6 @@ export async function getListOfReleases(
     return list;
 }
 
-
-/**
- * We need to translate "legacy" translations into the modern version
- * which involves changing the `package` URL. But the migrate function
- * call only gets a single parameter? How do we inject the new URL?
- * To solve this problem, we turn to our good friend a curried function.
- * The "outer" function captures the
- * parameters, and returns a function that takes a single parameter, like
- * what we need, but also knows what it needs to know.
- * @param provider function to convert the package field
- * @param ctx bag of information to allow url conversion.
- * @param release which release is being migrated.
- * @returns a function, that we can use in the migrate call when we load the JSON.
- */
-export function getTranslationMigration(
-    provider: VersionLocaleVersionUrlProvider,
-    ctx: MigrationContext,
-    release: string
-): (original: Record<string, unknown>) => Record<string, unknown> {
-    return function (o: Record<string, unknown>): Record<string, unknown> {
-        if (o && (typeof o === 'object') && ('translations' in o) && Array.isArray(o.translations)) {
-            const translations: Array<TranslationEntry> = [];
-            for (const t of o.translations) {
-                if (t && (typeof t === 'object') &&
-                    ('package' in t) && (typeof t.package === 'string')) {
-                    const translation = t as TranslationEntry;
-                    const updated = { ... translation };
-                    const pkg = provider(ctx, release, translation.version, translation.language);
-                    updated.package = pkg.url.toString();
-                    translations.push(updated);
-                } else {
-                    translations.push(t);
-                }
-            }
-            return { translations } as unknown as Record<string, unknown>;
-        }
-        return {};
-    }
-}
-
-export async function filterTranslations(
-    originals: TranslationsResultV1_0,
-    migrated: TranslationsResultV1_0,
-    locales: ReadonlyArray<string>,
-    legacyJson: string,
-    migratedJson: string,
-    spaces: string
-): Promise<TranslationsResultV1_0> {
-    const filteredMigratedTranslations = migrated.translations.filter((id) => locales.includes(id.language));
-    const filteredOriginalsTranslations = originals.translations.filter((id) => locales.includes(id.language));
-    const filteredMigrated: TranslationsResultV1_0 =  {
-        translations: filteredMigratedTranslations
-    };
-    const filteredOriginals: TranslationsResultV1_0 = {
-        translations: filteredOriginalsTranslations
-    }
-    const migratedText = JSON.stringify(filteredMigrated, null, spaces);
-    await Deno.writeTextFile(migratedJson, migratedText);
-    const originalsText = JSON.stringify(filteredOriginals, null, spaces);
-    await Deno.writeTextFile(legacyJson, originalsText);
-    return filteredOriginals;
-}
-
 /**
  * Read a releases translation object from the upstream API. In order to
  * support limiting the size of the archive, the list locales to be downloaded
@@ -239,8 +177,6 @@ export function getChecksums(
  * matt's name in it.
  * [FIXME?] Figure out how to load the entire set of contributors using a random
  * source.
- * @param reporter how to report non-error text.
- * @param jreporter how to report structured JSON.
  * @param locations how to access references.
  * @param options command-line options.
  * @param release id string for the release. e.g. '6.2.2'
@@ -274,4 +210,72 @@ export function getImporters(
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
     return locations.coreImportersV1_1(locations.ctx, release, locale, apiUrl.toString());
+}
+
+
+/**
+ * determine which files need to be downloaded for a core release.
+ * @param reporter how to report non-error text.
+ * @param jreporter how to report structured JSON.
+ * @param options command-line options.
+ * @param locations how to access resources.
+ * @param locales list of interesting locales.
+ * @param release release id, e.g. '6.6.2'
+ * @returns a request group to bring the repo into sync.
+ */
+export async function createCoreRequestGroup(
+    reporter: ConsoleReporter,
+    jreporter: JsonReporter,
+    options: CommandOptions,
+    locations: StandardLocations,
+    locales: ReadonlyArray<string>,
+    release: string
+): Promise<RequestGroup> {
+    const requests: Array<UrlProviderResult> = [];
+    const liveRequests: Array<LiveUrlProviderResult> = [];
+    const perRelease = await getCoreTranslations(reporter, jreporter, locations, options, release, false, locales);
+
+    // 12 core archive files per release - 4 groups of 3
+    // 2 groups are required .zip and .tar.gz
+    // 2 groups are optional -no-content.zip, and -new-bundled.zip
+    const archives = locations.coreZips.map((func) => func(locations.ctx, release));
+    requests.push(...archives);
+
+    if (perRelease.translations && (perRelease.translations.length > 0)) {
+        // for each translation
+        for (const translation of perRelease.translations) {
+            requests.push(getCredits(locations, release, translation.language));
+            requests.push(getImporters(locations, release, translation.language));
+            // zip file with l10n data
+            // *locale*.zip
+            // this is named after the locale version and should always exist
+            requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
+            if (release === translation.version) {
+                // 6 archive files per locale per release
+                // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
+                // these only exist if translation.version === release. i.e. they have been released.
+                requests.push(getChecksums(locations, release, translation.language));
+                const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
+                requests.push(...zips);
+            }
+        }
+    }
+
+    // special case for en_US, since it is not a translation
+    if (compareVersions.compare(release, '3.1.4', '>')) {
+        requests.push(getCredits(locations, release, 'en_US'));
+    }
+    requests.push(getImporters(locations, release, 'en_US'));
+    requests.push(getChecksums(locations, release, 'en_US'));
+
+    return ({
+        sourceName: locations.ctx.sourceName,
+        section: 'core',
+        slug: release,
+        statusFilename: locations.coreStatusFilename(locations.ctx, release),
+        requests,
+        liveRequests,
+        noChanges: false
+    });
+
 }
