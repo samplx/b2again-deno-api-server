@@ -539,8 +539,8 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
 
         coreStatusFilename: getFilenameSlugProvider('downloads', 'core', sourceName, 'release-status.json'),
 
-        pluginSummary: getCommonProvider('downloads', 'plugins', sourceName, `plugins/summary.json`),
-        pluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugins', 'plugin.json'),
+        pluginSummary: getCommonProvider('downloads', 'plugins', sourceName, `summary.json`),
+        pluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugin.json'),
         legacyPluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, `${sourceName}-plugin.json`),
         pluginStatusFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugin-status.json'),
         pluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, 'translations-1.0.json'),
