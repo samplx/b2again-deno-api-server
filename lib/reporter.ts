@@ -44,7 +44,7 @@ export function DISABLED_CONSOLE_REPORTER(_: string): void {}
 export function getISOtimestamp(now: Date = new Date()): string {
     const year = now.getUTCFullYear();
     const month = (now.getUTCMonth()+1).toString().padStart(2, '0');
-    const day = now.getUTCDay().toString().padStart(2, '0');
+    const day = now.getUTCDate().toString().padStart(2, '0');
     const hh = now.getUTCHours().toString().padStart(2, '0');
     const mm = now.getUTCMinutes().toString().padStart(2, '0');
     const ss = now.getUTCSeconds().toString().padStart(2, '0');

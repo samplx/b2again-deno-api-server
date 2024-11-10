@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { MigrationContext } from "./standards.ts";
+import { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from "./standards.ts";
 
 /**
  * how to migrate an upstream resource (theme, plugin), to the
@@ -58,12 +58,51 @@ export function migrateStructure<Structure extends Record<string, unknown>>(
     upstream: Structure
 ): Structure {
     const clone = structuredClone(upstream) as Record<string, unknown>;
-    for (const key in Object.keys(migrator)) {
+    for (const key of Object.keys(migrator)) {
         if ((key in clone) && clone[key] && (typeof key === 'string') && migrator[key]) {
-            console.log(`migrator[${key}](ctx, clone[key]=${clone[key]})`);
             clone[key] = migrator[key](ctx, clone[key]);
-            console.log(`after clone[key]=${clone[key]}`);
         }
     }
     return clone as Structure;
 }
+
+
+/**
+ * determine the initial live url for a migration step from the
+ * provider results and a migration context.
+ * @param ctx bag of information needed to convert urls.
+ * @param p details about the url and local resource.
+ * @returns string URL for the "default" live url with no hash.
+ */
+export function getLiveUrlFromProvider(ctx: MigrationContext, p: LiveUrlProviderResult): string {
+    if (!ctx.hosts[p.host]) {
+        console.log(JSON.stringify(ctx.hosts, null, '    '));
+        throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
+    }
+    return new URL(`${p.dirname}/${p.front}${p.extension}`, ctx.hosts[p.host].baseUrl).toString();
+}
+
+/**
+ * determine the url for a migration step from the provider results and
+ * a migration context.
+ * @param ctx bag of information needed to convert urls
+ * @param p details about the url and local resource
+ * @returns string URL
+ */
+export function getUrlFromProvider(ctx: MigrationContext, p: UrlProviderResult): string {
+    if (!p.host || !ctx.hosts[p.host]) {
+        throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
+    }
+    if (!p.pathname || !ctx.hosts[p.host].baseDirectory) {
+        return '';
+    }
+    if (typeof ctx.hosts[p.host].baseDirectory === 'string') {
+        // not sure why typescript/deno complains about possible undefined object
+        // so that I need to add the 'as string' part, but hey, learning is fun.
+        const length = (ctx.hosts[p.host].baseDirectory as string).length;
+        const relative = p.pathname.substring(length-1);
+        return new URL(relative, ctx.hosts[p.host].baseUrl).toString();
+    }
+    return new URL(p.pathname, ctx.hosts[p.host].baseUrl).toString();
+}
+

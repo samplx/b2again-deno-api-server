@@ -246,7 +246,7 @@ function getSlugOriginalLiveUrlProvider(
     return function (ctx: MigrationContext, slug: string, original: string): LiveUrlProviderResult {
         const filename = path.basename(original);
         const split = splitDirname(ctx, section, slug);
-        const dirname = `/${groupName}/${section}/${sourceName}/${split}/${fileType}/`;
+        const dirname = `/${groupName}/${section}/${sourceName}/${split}/${fileType}`;
         const lastDot = filename.lastIndexOf('.');
         const front = (lastDot < 0) ? filename : filename.substring(0, lastDot);
         const extension = (lastDot < 0) ? '' : filename.substring(lastDot).toLowerCase();
@@ -277,7 +277,7 @@ function getSlugLiveIndexUrlProvider(
     return function (ctx: MigrationContext, slug: string, _original: string): LiveUrlProviderResult {
         const filename = 'index.html';
         const split = splitDirname(ctx, section, slug);
-        const dirname = `/${groupName}/${section}/${sourceName}/${split}/${fileType}/`;
+        const dirname = `/${groupName}/${section}/${sourceName}/${split}/${fileType}`;
         const lastDot = filename.lastIndexOf('.');
         const front = (lastDot < 0) ? filename : filename.substring(0, lastDot);
         const extension = (lastDot < 0) ? '' : filename.substring(lastDot).toLowerCase();

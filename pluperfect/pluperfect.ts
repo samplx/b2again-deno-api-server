@@ -126,33 +126,6 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
     return 0;
 }
 
-
-/**
- * stage 2 - download meta data. translations, plugin and theme data.
- * determine list of remaining files to be downloaded.
- * @param options command-line options.
- * @param locations how to get local content.
- * @returns
- */
-async function gatherRequestGroups(
-    options: CommandOptions,
-    locations: StandardLocations,
-    releases: Array<string>,
-    locales: Array<string>,
-    pluginList: Array<ItemType>,
-    themeList: Array<ItemType>
-): Promise<Array<RequestGroup>> {
-    const fromReleases = await gatherCoreRequestGroups(options, locations, releases, locales);
-
-    // const json = JSON.stringify(fromReleases, null, options.jsonSpaces);
-    // await Deno.writeTextFile('./debug-fromReleases.json', json);
-
-    const fromPlugins = await gatherPluginRequestGroups(options, locations, pluginList, locales);
-    const fromThemes = await gatherThemeRequestGroups(options, locations, themeList, locales);
-
-    return [...fromReleases, ...fromPlugins, ...fromThemes];
-}
-
 async function createCoreRequestGroup(
     options: CommandOptions,
     locations: StandardLocations,
@@ -273,34 +246,6 @@ async function gatherCoreRequestGroups(
     return outstanding;
 }
 
-
-async function gatherPluginRequestGroups(
-    options: CommandOptions,
-    locations: StandardLocations,
-    pluginList: Array<ItemType>,
-    locales: Array<string>
-): Promise<Array<RequestGroup>> {
-    const outstanding: Array<RequestGroup> = [];
-
-    return outstanding;
-}
-
-
-async function gatherThemeRequestGroups(
-    options: CommandOptions,
-    locations: StandardLocations,
-    themeList: Array<ItemType>,
-    locales: Array<string>
-): Promise<Array<RequestGroup>> {
-    const outstanding: Array<RequestGroup> = [];
-
-    for (const item of themeList) {
-        const group = await createThemeRequestGroup(reporter, jreporter, options, locations, locales, item.slug);
-        outstanding.push(group);
-    }
-    return outstanding;
-}
-
 /**
  * Attempt to download a group of files.
  * @param options command-line options.
@@ -313,7 +258,7 @@ async function downloadRequestGroup(
 ): Promise<boolean> {
     const groupStatus: ArchiveGroupStatus = await loadGroupStatus(group);
     if (downloadIsComplete(options, group, groupStatus)) {
-        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: true, skipped: true });
+        jreporter({ operation: 'downloadRequestGroup', section: group.section, slug: group.slug, filename: group.statusFilename.pathname, is_complete: true, skipped: true });
         return true;
     }
 
@@ -321,7 +266,7 @@ async function downloadRequestGroup(
     const filtered = group.requests.filter((item) => item.upstream && item.pathname && item.host &&
                         (options.force || options.rehash || (groupStatus.files[item.pathname]?.status !== 'complete')));
 
-    jreporter({ operation: 'downloadRequestGroup', action: 'filtered', size: filtered.length });
+    jreporter({ operation: 'downloadRequestGroup', section: group.section, slug: group.slug, action: 'filtered', size: filtered.length });
     for (const item of filtered) {
         if (item.upstream && item.pathname && item.host) {
             // we need this one
@@ -356,7 +301,7 @@ async function downloadRequestGroup(
     }
     groupStatus.is_complete = ok;
 
-    jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: ok, skipped: false });
+    jreporter({ operation: 'downloadRequestGroup', section: group.section, slug: group.slug, filename: group.statusFilename.pathname, is_complete: ok, skipped: false });
     await saveGroupStatus(group, groupStatus, options.jsonSpaces);
 
     return groupStatus.is_complete;
@@ -437,57 +382,6 @@ async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus>
     return results;
 }
 
-/**
- * stage 3 - download remaining files.
- * @param options command-line options.
- * @param locations how to get local content.
- * @returns
- */
-async function stage3(
-    options: CommandOptions,
-    remaining: Array<RequestGroup>
-): Promise<number> {
-    let total = 0;
-    remaining.forEach((group) => {
-        total += group.requests.length;
-    });
-    reporter(`downloading ${remaining.length} groups with a total of ${total} files`);
-    jreporter({ operation: 'stage3', action: 'summary', size: remaining.length, total });
-    let counter = 0;
-    let successful = 0;
-    let failures = 0;
-    for (const group of remaining) {
-        const ok = await downloadRequestGroup(options, group);
-        if (ok) {
-            successful += 1;
-        } else {
-            failures += 1;
-        }
-        counter += 1;
-    }
-    jreporter({ operation: 'stage3', action: 'complete', counter, successful, failures });
-    return 0;
-}
-
-/**
- * summary report.
- * @param options command-line options.
- * @param locations how to get local content.
- * @returns
- */
-async function summary(options: CommandOptions, locations: StandardLocations, status: number): Promise<void> {
-}
-
-
-/**
- * save everything.
- * @param options command-line options.
- * @param locations how to get local content.
- * @returns
- */
-async function save(options: CommandOptions, locations: StandardLocations): Promise<void> {
-}
-
 async function getListOfLocales(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
@@ -522,7 +416,7 @@ async function coreSection(
         }
         total += 1;
     }
-    jreporter({ operation: 'processCoreReleases', action: 'complete', total, successful, failures });
+    jreporter({ operation: 'coreSection', action: 'complete', total, successful, failures });
 }
 
 
@@ -546,7 +440,7 @@ async function pluginsSection(
         }
         total += 1;
     }
-    jreporter({ operation: 'processCoreReleases', action: 'complete', total, successful, failures });
+    jreporter({ operation: 'pluginsSection', action: 'complete', total, successful, failures });
 }
 
 async function themesSection(
@@ -571,7 +465,7 @@ async function themesSection(
         }
         total += 1;
     }
-    jreporter({ operation: 'processCoreReleases', action: 'complete', total, successful, failures });
+    jreporter({ operation: 'themesSection', action: 'complete', total, successful, failures });
 }
 
 /**
@@ -607,9 +501,8 @@ async function main(argv: Array<string>): Promise<number> {
     }
     const locales = await getListOfLocales(reporter, jreporter, locations);
     await themesSection(options, locations, locales);
-    // await coreSection(options, locations, locales);
+    await coreSection(options, locations, locales);
     // await pluginsSection(options, locations, locales);
-    await save(options, locations);
     jreporter({operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
     reporter(`finished:   ${getISOtimestamp()}`);
     return 0;
