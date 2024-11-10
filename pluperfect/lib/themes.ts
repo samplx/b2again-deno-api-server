@@ -14,11 +14,10 @@
  *  limitations under the License.
  */
 
-import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationEntry, TranslationsResultV1_0 } from "../../lib/api.ts";
-import { ArchiveFileSummary } from "../../lib/archive-status.ts";
-import { migrateStructure, MigrationProvider, MigrationStructureProvider } from "../../lib/migration.ts";
+import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from "../../lib/api.ts";
+import { migrateStructure, MigrationStructureProvider } from "../../lib/migration.ts";
 import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { ContentHostType, LiveUrlProviderResult, MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../../lib/standards.ts";
+import { LiveUrlProviderResult, MigrationContext, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
 import { RequestGroup } from "../pluperfect.ts";
 import { filterTranslations, getTranslationMigration } from "./core.ts";
 import { downloadMetaLegacyJson } from "./downloads.ts";
@@ -316,12 +315,12 @@ function getThemeMigrator(
  * @param slug theme slug.
  * @returns
  */
-export async function processTheme(
+export async function createThemeRequestGroup(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     options: CommandOptions,
     locations: StandardLocations,
-    locales: Array<string>,
+    locales: ReadonlyArray<string>,
     slug: string,
 ): Promise<RequestGroup> {
 
@@ -371,7 +370,7 @@ export async function processTheme(
             // since themes timestamps are largely absent, we always reload the current version's translations
             const outdated = ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
             const details = await getThemeTranslations(reporter, jreporter, locations, options, slug, version, outdated, locales);
-            if (details && (details.translations.length > 0)) {
+            if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                 for (const item of details.translations) {
                     if (item.version === version) {
                         group.requests.push(locations.themeL10nZip(locations.ctx, slug, version, item.language));
@@ -406,7 +405,7 @@ async function getThemeTranslations(
     slug: string,
     version: string,
     outdated: boolean,
-    locales: Array<string>
+    locales: ReadonlyArray<string>
 ): Promise<TranslationsResultV1_0> {
     const apiUrl = new URL(`/translations/themes/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('slug', slug);

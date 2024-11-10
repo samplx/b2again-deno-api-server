@@ -154,7 +154,7 @@ export function getTranslationMigration(
 export async function filterTranslations(
     originals: TranslationsResultV1_0,
     migrated: TranslationsResultV1_0,
-    locales: Array<string>,
+    locales: ReadonlyArray<string>,
     legacyJson: string,
     migratedJson: string,
     spaces: string
@@ -193,7 +193,7 @@ export async function getCoreTranslations(
     options: CommandOptions,
     release: string,
     outdated: boolean,
-    locales: Array<string>
+    locales: ReadonlyArray<string>
 ): Promise<TranslationsResultV1_0> {
     const apiUrl = new URL(`/translations/core/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);

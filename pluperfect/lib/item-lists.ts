@@ -261,6 +261,41 @@ function listUnique(list: Array<ItemType>): Array<ItemType> {
     return result;
 }
 
+/**
+ * Attempt to return a list of items in an optimal order.
+ * if there is an interesting list, we use it. if there
+ * is an updated list, we check to see if there are any
+ * slugs in the effective list that are not in the updated
+ * list. those we put first, then updated in order. the
+ * assumption is that the "fall-through-the-cracks" slugs
+ * are for the most recent inserts, so get them first.
+ * the goal is to be able to stop downloading themes when
+ * we hit ones that are not changing. since there are no
+ * useful timestamps available in any of the lists of themes
+ * we have to jump through a few hoops to avoid downloading
+ * at least 13k theme.json files just to make sure we get
+ * timely updates.
+ * @param lists current list of items.
+ * @returns list of slugs in "optimal" updated order?
+ */
+export function getInUpdateOrder(lists: ItemLists): Array<string> {
+    if (Array.isArray(lists.interesting) && (lists.interesting.length > 0)) {
+        return lists.interesting.map((item) => item.slug);
+    }
+    if (!Array.isArray(lists.effective)) {
+        throw new Deno.errors.BadResource(`effective list cannot be empty`);
+    }
+    if (Array.isArray(lists.updated)) {
+        if (lists.updated.length === lists.effective.length) {
+            return lists.updated.map((item) => item.slug);
+        } else {
+            const front = listRemoval(lists.updated, lists.effective);
+            const inOrder = [ ...front, ...lists.updated ];
+            return inOrder.map((item) => item.slug);
+        }
+    }
+    return lists.effective.map((item) => item.slug);
+}
 
 /**
  * Extract a list of themes from an HTML page.

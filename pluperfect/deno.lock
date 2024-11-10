@@ -54,6 +54,10 @@
       "integrity": "sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw=="
     }
   },
+  "remote": {
+    "https://deno.land/x/compare_versions@0.4.0/compare-versions.ts": "a010baa3c35692255873d9701aca7cd7fb27a84bd683fe34a9f70b1ca1fbf4f6",
+    "https://deno.land/x/compare_versions@0.4.0/mod.ts": "cb9992bcc3be29b121714bf02552d6bb8c8dd468123a00e45079f66d0ff9368b"
+  },
   "workspace": {
     "dependencies": [
       "jsr:@std/cli@^1.0.6",

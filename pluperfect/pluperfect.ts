@@ -21,12 +21,12 @@ import { getParseOptions, printHelp, type CommandOptions } from "./lib/options.t
 import getStandardLocations from "../lib/b2again-locations.ts";
 import { ArchiveGroupName, LiveUrlProviderResult, StandardLocations, UrlProviderResult } from "../lib/standards.ts";
 import { getChecksums, getCoreReleases, getCoreTranslations, getCredits, getImporters, getListOfReleases } from "./lib/core.ts";
-import { getInterestingSlugs, getItemLists, ItemType, saveItemLists } from "./lib/item-lists.ts";
+import { getInterestingSlugs, getInUpdateOrder, getItemLists, ItemType, saveItemLists } from "./lib/item-lists.ts";
 import { downloadFile } from "./lib/downloads.ts";
 import { ArchiveGroupStatus } from "../lib/archive-status.ts";
 import * as path from "jsr:@std/path";
 import { compareVersions } from "https://deno.land/x/compare_versions@0.4.0/mod.ts";
-import { processTheme } from "./lib/themes.ts";
+import { createThemeRequestGroup } from "./lib/themes.ts";
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -153,6 +153,60 @@ async function gatherRequestGroups(
     return [...fromReleases, ...fromPlugins, ...fromThemes];
 }
 
+async function createCoreRequestGroup(
+    options: CommandOptions,
+    locations: StandardLocations,
+    locales: ReadonlyArray<string>,
+    release: string
+): Promise<RequestGroup> {
+    const requests: Array<UrlProviderResult> = [];
+    const liveRequests: Array<LiveUrlProviderResult> = [];
+    const perRelease = await getCoreTranslations(reporter, jreporter, locations, options, release, false, locales);
+
+    // 12 core archive files per release - 4 groups of 3
+    // 2 groups are required .zip and .tar.gz
+    // 2 groups are optional -no-content.zip, and -new-bundled.zip
+    const archives = locations.coreZips.map((func) => func(locations.ctx, release));
+    requests.push(...archives);
+
+    if (perRelease.translations && (perRelease.translations.length > 0)) {
+        // for each translation
+        for (const translation of perRelease.translations) {
+            requests.push(getCredits(locations, release, translation.language));
+            requests.push(getImporters(locations, release, translation.language));
+            // zip file with l10n data
+            // *locale*.zip
+            // this is named after the locale version and should always exist
+            requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
+            if (release === translation.version) {
+                // 6 archive files per locale per release
+                // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
+                // these only exist if translation.version === release. i.e. they have been released.
+                requests.push(getChecksums(locations, release, translation.language));
+                const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
+                requests.push(...zips);
+            }
+        }
+    }
+
+    // special case for en_US, since it is not a translation
+    if (compareVersions.compare(release, '3.1.4', '>')) {
+        requests.push(getCredits(locations, release, 'en_US'));
+    }
+    requests.push(getImporters(locations, release, 'en_US'));
+    requests.push(getChecksums(locations, release, 'en_US'));
+
+    return ({
+        sourceName: locations.ctx.sourceName,
+        section: 'core',
+        slug: release,
+        statusFilename: locations.coreStatusFilename(locations.ctx, release),
+        requests,
+        liveRequests
+    });
+
+}
+
 /**
  * based upon the existing meta data determine what files are left to download.
  * @param options command-line options.
@@ -241,7 +295,7 @@ async function gatherThemeRequestGroups(
     const outstanding: Array<RequestGroup> = [];
 
     for (const item of themeList) {
-        const group = await processTheme(reporter, jreporter, options, locations, locales, item.slug);
+        const group = await createThemeRequestGroup(reporter, jreporter, options, locations, locales, item.slug);
         outstanding.push(group);
     }
     return outstanding;
@@ -264,15 +318,20 @@ async function downloadRequestGroup(
     }
 
     let ok = true;
-    for (const item of group.requests) {
+    const filtered = group.requests.filter((item) => item.upstream && item.pathname && item.host &&
+                        (options.force || options.rehash || (groupStatus.files[item.pathname]?.status !== 'complete')));
+
+    jreporter({ operation: 'downloadRequestGroup', action: 'filtered', size: filtered.length });
+    for (const item of filtered) {
         if (item.upstream && item.pathname && item.host) {
-            if (!options.force &&
-                !options.rehash &&
-                (groupStatus.files[item.pathname]?.status === 'complete')) {
-                // we've got this one
-                continue;
-            }
-            const fileStatus = await downloadFile(reporter, jreporter, item, options.force, options.rehash);
+            // we need this one
+            const needHash = options.rehash ||
+                !groupStatus.files[item.pathname] ||
+                !groupStatus.files[item.pathname].md5 ||
+                !groupStatus.files[item.pathname].sha1 ||
+                !groupStatus.files[item.pathname].sha256;
+
+            const fileStatus = await downloadFile(reporter, jreporter, item, options.force, needHash);
             if (groupStatus.files[item.pathname]) {
                 groupStatus.files[item.pathname].status = fileStatus.status;
                 groupStatus.files[item.pathname].when = fileStatus.when;
@@ -297,6 +356,7 @@ async function downloadRequestGroup(
     }
     groupStatus.is_complete = ok;
 
+    jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: ok, skipped: false });
     await saveGroupStatus(group, groupStatus, options.jsonSpaces);
 
     return groupStatus.is_complete;
@@ -330,18 +390,19 @@ function downloadIsComplete(
  * @param jsonSpaces how to expand json. pretty or not?
  */
 async function saveGroupStatus(group: RequestGroup, groupStatus: ArchiveGroupStatus, jsonSpaces: string): Promise<void> {
-    if (group.statusFilename.pathname) {
-        try {
-            const json = JSON.stringify(groupStatus, null, jsonSpaces);
-            const dirname = path.dirname(group.statusFilename.pathname);
-            await Deno.mkdir(dirname, { recursive: true });
-            await Deno.writeTextFile(group.statusFilename.pathname, json);
-        } catch (e) {
-            console.error(`Error: unable to save status: ${group.statusFilename.pathname} error: ${e}`);
-            jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, error: e });
-        }
-        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: groupStatus.is_complete });
+    if (!group.statusFilename.pathname) {
+        throw new Deno.errors.BadResource(`group.statusFilename.pathname must be defined`);
     }
+    try {
+        const json = JSON.stringify(groupStatus, null, jsonSpaces);
+        const dirname = path.dirname(group.statusFilename.pathname);
+        await Deno.mkdir(dirname, { recursive: true });
+        await Deno.writeTextFile(group.statusFilename.pathname, json);
+    } catch (e) {
+        console.error(`Error: unable to save status: ${group.statusFilename.pathname} error: ${e}`);
+        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, error: e });
+    }
+    jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: groupStatus.is_complete });
 }
 
 /**
@@ -441,6 +502,78 @@ async function getListOfLocales(
     return [];
 }
 
+async function coreSection(
+    options: CommandOptions,
+    locations: StandardLocations,
+    locales: ReadonlyArray<string>,
+): Promise<void> {
+    const releasesMap = await getCoreReleases(reporter, jreporter, options, locations);
+    const releases = await getListOfReleases(reporter, jreporter, locations, releasesMap);
+    let total = 0;
+    let successful = 0;
+    let failures = 0;
+    for (const release of releases) {
+        const group = await createCoreRequestGroup(options, locations, locales, release);
+        const ok = await downloadRequestGroup(options, group);
+        if (ok) {
+            successful += 1;
+        } else {
+            failures += 1;
+        }
+        total += 1;
+    }
+    jreporter({ operation: 'processCoreReleases', action: 'complete', total, successful, failures });
+}
+
+
+async function pluginsSection(
+    options: CommandOptions,
+    locations: StandardLocations,
+    locales: ReadonlyArray<string>,
+): Promise<void> {
+    const releasesMap = await getCoreReleases(reporter, jreporter, options, locations);
+    const slugs = await getListOfReleases(reporter, jreporter, locations, releasesMap);
+    let total = 0;
+    let successful = 0;
+    let failures = 0;
+    for (const slug of slugs) {
+        const group = await createCoreRequestGroup(options, locations, locales, slug);
+        const ok = await downloadRequestGroup(options, group);
+        if (ok) {
+            successful += 1;
+        } else {
+            failures += 1;
+        }
+        total += 1;
+    }
+    jreporter({ operation: 'processCoreReleases', action: 'complete', total, successful, failures });
+}
+
+async function themesSection(
+    options: CommandOptions,
+    locations: StandardLocations,
+    locales: ReadonlyArray<string>,
+): Promise<void> {
+    const themeLists = await getItemLists(reporter, jreporter, locations, 'theme');
+    await saveItemLists(reporter, jreporter, locations, options, 'theme', themeLists);
+
+    let total = 0;
+    let successful = 0;
+    let failures = 0;
+    const slugs = getInUpdateOrder(themeLists);
+    for (const slug of slugs) {
+        const group = await createThemeRequestGroup(reporter, jreporter, options, locations, locales, slug);
+        const ok = await downloadRequestGroup(options, group);
+        if (ok) {
+            successful += 1;
+        } else {
+            failures += 1;
+        }
+        total += 1;
+    }
+    jreporter({ operation: 'processCoreReleases', action: 'complete', total, successful, failures });
+}
+
 /**
  *
  * @param argv arguments passed after the `deno run -N pluperfect.ts`
@@ -468,33 +601,18 @@ async function main(argv: Array<string>): Promise<number> {
     reporter(`started:   ${timestamp}`);
     const locations = getStandardLocations();
 
-    const stopAfter = parseInt(options.stop ?? '99');
-    let status = await checkPermissions(locations);
-    if (status === 0) {
-        const releasesMap = await getCoreReleases(reporter, jreporter, options, locations);
-        const releases = await getListOfReleases(reporter, jreporter, locations, releasesMap);
-        reporter(`stage1: total number of releases: ${releases.length}`);
-        const locales = await getListOfLocales(reporter, jreporter, locations);
-        // const pluginLists = await getItemLists(reporter, jreporter, locations, 'plugin');
-        // await saveItemLists(reporter, jreporter, locations, options, 'plugin', pluginLists);
-
-        const themeLists = await getItemLists(reporter, jreporter, locations, 'theme');
-        await saveItemLists(reporter, jreporter, locations, options, 'theme', themeLists);
-
-        if ((status === 0) && (stopAfter > 1)) {
-            const remaining = await gatherRequestGroups(options, locations, releases, locales, [] /* pluginLists.effective */, themeLists.effective);
-            if ((status === 0) && (stopAfter > 2)) {
-                status = await stage3(options, remaining);
-            }
-        }
-        await summary(options, locations, status);
+//    const stopAfter = parseInt(options.stop ?? '99');
+    if (await checkPermissions(locations)) {
+        return 1;
     }
-    if (status === 0) {
-        await save(options, locations);
-    }
-    jreporter({operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp, status});
+    const locales = await getListOfLocales(reporter, jreporter, locations);
+    await themesSection(options, locations, locales);
+    // await coreSection(options, locations, locales);
+    // await pluginsSection(options, locations, locales);
+    await save(options, locations);
+    jreporter({operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
     reporter(`finished:   ${getISOtimestamp()}`);
-    return status;
+    return 0;
 }
 
 const exitCode: number = await main(Deno.args);

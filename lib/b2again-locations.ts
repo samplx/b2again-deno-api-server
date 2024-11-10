@@ -202,7 +202,8 @@ function getSlugVersionLocaleUrlProvider(
     return function (ctx: MigrationContext, slug: string, version: string, locale: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
         const relative = `/${groupName}/${section}/${sourceName}/${split}/${version}/l10n/${locale}.zip`;
-        const original = `https://${downloadsHost}/translation/${section}/${slug}/${version}/${locale}.zip`;
+        const singular = (section === 'plugins') ? 'plugin' : ((section === 'themes') ? 'theme' : 'core');
+        const original = `https://${downloadsHost}/translation/${singular}/${slug}/${version}/${locale}.zip`;
         return bindHost(ctx, host, relative, original, true);
     }
 }
@@ -474,8 +475,10 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         },
         releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
         legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
-        // interestingReleases -- default to all releases
-        // interestingLocales -- default to all locales
+        // interestingReleases -- default to all releases -- can be json w/comments or slugs
+        // interestingReleases: getCommonProvider('downloads', 'core', sourceName, `my-releases.jsonc`),
+        // interestingLocales -- default to all locales -- can be json w/comments or slugs
+        // interestingLocales: getCommonProvider('downloads', 'core', sourceName, `my-locales.jsonc`),
         pluginSlugs: {
             defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),

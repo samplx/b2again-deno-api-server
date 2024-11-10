@@ -80,10 +80,10 @@ export async function downloadFile(
             const response = await fetch(details.upstream);
             if (!response.ok || !response.body) {
                 output.close();
-                jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.url.pathname, error: `${response.status}`});
+                jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.pathname, error: `${response.status}`});
                 return {
                     host: details.host,
-                    filename: details.url.pathname,
+                    filename: details.pathname,
                     status: 'failed',
                     is_readonly: false,
                     when
@@ -101,10 +101,10 @@ export async function downloadFile(
             output.close();
         } catch (e) {
             console.error(`Error: unable to save file: ${details.pathname}`);
-            jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.url.pathname, error: e});
+            jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.pathname, error: e});
             return {
                 host: details.host,
-                filename: details.url.pathname,
+                filename: details.pathname,
                 status: 'failed',
                 is_readonly: false,
                 when
@@ -112,7 +112,7 @@ export async function downloadFile(
         }
     } else if (needHash) {
         try {
-            return new Promise((resolve, reject) => {
+            return await new Promise((resolve, reject) => {
                 if (!details.host || !details.pathname || !details.upstream) {
                     throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
                 }
@@ -125,7 +125,7 @@ export async function downloadFile(
                         sha256 = sha256hash.digest('hex');
                         md5 = md5hash.digest('hex');
                         sha1 = sha1hash.digest('hex');
-                        jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.url.pathname});
+                        jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.pathname});
                         resolve ({
                             host: details.host,
                             filename: details.pathname,
@@ -146,7 +146,7 @@ export async function downloadFile(
             });
         } catch (e) {
             console.error(`Error: ${e} unable to read file to compute hashes: ${details.pathname}`);
-            jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.url.pathname, error: e});
+            jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.pathname, error: e});
             return {
                 host: details.host,
                 filename: details.pathname,
@@ -155,11 +155,12 @@ export async function downloadFile(
                 when,
             };
         }
+    } else {
+        jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: details.upstream, filename: details.pathname, needHash, needed });
     }
-    jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: details.upstream, filename: details.url.pathname, needHash, needed });
     return {
         host: details.host,
-        filename: details.url.pathname,
+        filename: details.pathname,
         status: 'complete',
         is_readonly: !!details.is_readonly,
         when,
