@@ -1,0 +1,13 @@
+{
+    "name": "@b2again/blue-eyes",
+    "exports": "./mod.ts",
+    "tasks": {
+        "dev": "deno serve --watch -R -E -N blue-eyes.ts"
+    },
+    "imports": {
+        "@cross/runtime": "jsr:@cross/runtime@^1.1.0",
+        "@std/assert": "jsr:@std/assert@1",
+        "@std/dotenv": "jsr:@std/dotenv@^0.225.2",
+        "@std/http": "jsr:@std/http@^1.0.9"
+    }
+}
