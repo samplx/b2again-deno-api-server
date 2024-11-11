@@ -14,25 +14,25 @@
  *  limitations under the License.
  */
 
-import * as path from "jsr:@std/path";
+import * as path from 'jsr:@std/path';
 
 import {
+    ArchiveGroupName,
     CommonUrlProvider,
     ContentHostType,
-    ArchiveGroupName,
+    LiveUrlProviderResult,
     MigrationContext,
+    SlugLocaleOriginalUrlProvider,
+    SlugOriginalLiveUrlProvider,
+    SlugOriginalUrlProvider,
     SlugUrlProvider,
     SlugVersionOriginalUrlProvider,
+    SlugVersionUrlProvider,
     splitDirname,
     StandardLocations,
     UrlProviderResult,
-    SlugOriginalUrlProvider,
-    SlugOriginalLiveUrlProvider,
-    LiveUrlProviderResult,
     VersionLocaleVersionUrlProvider,
-    SlugLocaleOriginalUrlProvider,
-    SlugVersionUrlProvider
-} from "./standards.ts";
+} from './standards.ts';
 
 /**
  * this is an implementation of a configuration object.
@@ -73,7 +73,7 @@ function bindHost(
     host: ContentHostType,
     relative: string,
     upstream?: string,
-    is_readonly?: boolean
+    is_readonly?: boolean,
 ): UrlProviderResult {
     const url = new URL(relative, ctx.hosts[host].baseUrl);
     let pathname;
@@ -85,7 +85,7 @@ function bindHost(
         url,
         pathname,
         upstream,
-        is_readonly
+        is_readonly,
     };
 }
 
@@ -103,12 +103,12 @@ function getFilenameSlugProvider(
     section: ArchiveGroupName,
     sourceName: string,
     filename: string,
-    groupName: string = 'meta'
+    groupName: string = 'meta',
 ): SlugUrlProvider {
     return function (ctx: MigrationContext, slug: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
         return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}/${filename}`);
-    }
+    };
 }
 
 function getFilenameSlugVersionProvider(
@@ -117,12 +117,12 @@ function getFilenameSlugVersionProvider(
     sourceName: string,
     filename: string,
     postSplit: string = '',
-    groupName: string = 'meta'
+    groupName: string = 'meta',
 ): SlugVersionUrlProvider {
     return function (ctx: MigrationContext, slug: string, version: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
         return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}${postSplit}/${version}/${filename}`);
-    }
+    };
 }
 
 /**
@@ -139,12 +139,12 @@ function getFilenameLocaleSlugProvider(
     section: ArchiveGroupName,
     sourceName: string,
     filename: string,
-    groupName: string = 'meta'
+    groupName: string = 'meta',
 ): SlugLocaleOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, locale: string, original: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
         return bindHost(ctx, host, `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}/${filename}`, original);
-    }
+    };
 }
 
 /**
@@ -160,12 +160,12 @@ function getCommonProvider(
     section: ArchiveGroupName,
     sourceName: string,
     filename: string,
-    groupName: string = 'meta'
+    groupName: string = 'meta',
 ): CommonUrlProvider {
     return function (ctx: MigrationContext): UrlProviderResult {
         const relative = `/${groupName}/${section}/${sourceName}/${filename}`;
         return bindHost(ctx, host, relative);
-    }
+    };
 }
 
 /**
@@ -182,14 +182,14 @@ function getSlugVersionOriginalUrlProvider(
     section: ArchiveGroupName,
     sourceName: string,
     postSplit: string = '',
-    groupName: string= 'read-only'
+    groupName: string = 'read-only',
 ): SlugVersionOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, version: string, original: string): UrlProviderResult {
         const filename = path.basename(original);
         const split = splitDirname(ctx, section, slug);
         const relative = `/${groupName}/${section}/${sourceName}/${split}${postSplit}/${version}/${filename}`;
         return bindHost(ctx, host, relative, original, true);
-    }
+    };
 }
 
 function getSlugVersionLocaleUrlProvider(
@@ -197,7 +197,7 @@ function getSlugVersionLocaleUrlProvider(
     host: ContentHostType,
     section: ArchiveGroupName,
     sourceName: string,
-    groupName: string= 'read-only'
+    groupName: string = 'read-only',
 ): SlugVersionOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, version: string, locale: string): UrlProviderResult {
         const split = splitDirname(ctx, section, slug);
@@ -205,7 +205,7 @@ function getSlugVersionLocaleUrlProvider(
         const singular = (section === 'plugins') ? 'plugin' : ((section === 'themes') ? 'theme' : 'core');
         const original = `https://${downloadsHost}/translation/${singular}/${slug}/${version}/${locale}.zip`;
         return bindHost(ctx, host, relative, original, true);
-    }
+    };
 }
 
 /**
@@ -220,12 +220,12 @@ function getSlugUrlProvider(
     host: ContentHostType,
     section: ArchiveGroupName,
     sourceName: string,
-    groupName: string
+    groupName: string,
 ): SlugOriginalUrlProvider {
     return function (ctx: MigrationContext, slug: string, _original: string): UrlProviderResult {
         const relative = `/${groupName}/${section}/${sourceName}/${slug}/`;
         return bindHost(ctx, host, relative);
-    }
+    };
 }
 
 /**
@@ -241,7 +241,7 @@ function getSlugOriginalLiveUrlProvider(
     section: ArchiveGroupName,
     sourceName: string,
     fileType: string,
-    groupName: string = 'live'
+    groupName: string = 'live',
 ): SlugOriginalLiveUrlProvider {
     return function (ctx: MigrationContext, slug: string, original: string): LiveUrlProviderResult {
         const filename = path.basename(original);
@@ -254,9 +254,9 @@ function getSlugOriginalLiveUrlProvider(
             host,
             dirname,
             front,
-            extension
-        }
-    }
+            extension,
+        };
+    };
 }
 
 /**
@@ -272,7 +272,7 @@ function getSlugLiveIndexUrlProvider(
     section: ArchiveGroupName,
     sourceName: string,
     fileType: string,
-    groupName: string = 'live'
+    groupName: string = 'live',
 ): SlugOriginalLiveUrlProvider {
     return function (ctx: MigrationContext, slug: string, _original: string): LiveUrlProviderResult {
         const filename = 'index.html';
@@ -285,9 +285,9 @@ function getSlugLiveIndexUrlProvider(
             host,
             dirname,
             front,
-            extension
-        }
-    }
+            extension,
+        };
+    };
 }
 
 /**
@@ -308,14 +308,14 @@ function getCoreArchiveUrlProvider(
     sourceName: string,
     suffix: string,
     filename: string = 'wordpress',
-    groupName: string = 'read-only'
+    groupName: string = 'read-only',
 ): SlugUrlProvider {
     return function (ctx: MigrationContext, release: string): UrlProviderResult {
         const split = splitDirname(ctx, section, release);
         const relative = `/${groupName}/${section}/${sourceName}/${split}/${filename}-${release}${suffix}`;
         const upstream = `https://${downloadsHost}/release/${filename}-${release}${suffix}`;
         return bindHost(ctx, host, relative, upstream, true);
-    }
+    };
 }
 
 /**
@@ -336,11 +336,12 @@ function getCoreArchiveListUrlProvider(
     section: ArchiveGroupName,
     sourceName: string,
     filename: string = 'wordpress',
-    groupName: string = 'read-only'
+    groupName: string = 'read-only',
 ): Array<SlugUrlProvider> {
-    return suffixes.map((suffix) => getCoreArchiveUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName));
+    return suffixes.map((suffix) =>
+        getCoreArchiveUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName)
+    );
 }
-
 
 /**
  * create a url provider for the core l10n zip file.
@@ -356,7 +357,7 @@ function getCoreL10nArchiveUrlProvider(
     host: ContentHostType,
     section: ArchiveGroupName,
     sourceName: string,
-    groupName: string = 'read-only'
+    groupName: string = 'read-only',
 ): VersionLocaleVersionUrlProvider {
     return function (ctx: MigrationContext, _release: string, localeVersion: string, locale: string): UrlProviderResult {
         const split = splitDirname(ctx, section, localeVersion);
@@ -364,7 +365,7 @@ function getCoreL10nArchiveUrlProvider(
         // translation/core/5.8-beta/af.zip
         const upstream = `https://${downloadsHost}/translation/core/${localeVersion}/${locale}.zip`;
         return bindHost(ctx, host, relative, upstream, true);
-    }
+    };
 }
 
 /**
@@ -385,14 +386,14 @@ function getCoreL10nArchiveItemUrlProvider(
     sourceName: string,
     suffix: string,
     filename: string = 'wordpress',
-    groupName: string = 'read-only'
+    groupName: string = 'read-only',
 ): VersionLocaleVersionUrlProvider {
     return function (ctx: MigrationContext, release: string, localeVersion: string, locale: string): UrlProviderResult {
         const split = splitDirname(ctx, section, localeVersion);
         const relative = `/${groupName}/${section}/${sourceName}/${split}/l10n/${locale}/${filename}-${release}${suffix}`;
         const upstream = `https://${downloadsHost}/release/${locale}/${filename}-${release}${suffix}`;
         return bindHost(ctx, host, relative, upstream, true);
-    }
+    };
 }
 
 /**
@@ -413,12 +414,12 @@ function getCoreL10nArchiveListUrlProvider(
     section: ArchiveGroupName,
     sourceName: string,
     filename: string = 'wordpress',
-    groupName: string = 'read-only'
+    groupName: string = 'read-only',
 ): Array<VersionLocaleVersionUrlProvider> {
     return suffixes.map((suffix) =>
-        getCoreL10nArchiveItemUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName));
+        getCoreL10nArchiveItemUrlProvider(downloadsHost, host, section, sourceName, suffix, filename, groupName)
+    );
 }
-
 
 /**
  * default value for the downloads host's base directory.
@@ -452,26 +453,26 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             sourceName,
             hosts: {
                 api: {
-                    baseUrl: 'https://api.b2again.org/'
+                    baseUrl: 'https://api.b2again.org/',
                 },
                 downloads: {
                     baseUrl: 'https://downloads.b2again.org/',
-                    baseDirectory: DOWNLOADS_BASE_DIRECTORY
+                    baseDirectory: DOWNLOADS_BASE_DIRECTORY,
                 },
                 support: {
-                    baseUrl: 'https://support.b2again.org/'
+                    baseUrl: 'https://support.b2again.org/',
                 },
                 www: {
-                    baseUrl: 'https://www.b2again.org/'
-                }
+                    baseUrl: 'https://www.b2again.org/',
+                },
             },
             prefixLengths: {
                 core: 0,
                 plugins: 2,
-                themes: 2
+                themes: 2,
             },
             nonAsciiPrefixSuffix: '+',
-            liveMiddleLength: 20
+            liveMiddleLength: 20,
         },
         releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
         legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
@@ -487,7 +488,7 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
             rejected: undefined,
-            updated: getCommonProvider('downloads', 'plugins', sourceName, `updated-list.json`)
+            updated: getCommonProvider('downloads', 'plugins', sourceName, `updated-list.json`),
         },
         themeSlugs: {
             defaults: getCommonProvider('downloads', 'themes', sourceName, `defaults-list.json`),
@@ -497,7 +498,7 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
             rejected: undefined,
-            updated: getCommonProvider('downloads', 'themes', sourceName, `updated-list.json`)
+            updated: getCommonProvider('downloads', 'themes', sourceName, `updated-list.json`),
         },
 
         coreTranslationV1_0: getFilenameSlugProvider('downloads', 'core', sourceName, 'translations-1.0.json'),
@@ -517,7 +518,10 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
                 '.tar.gz.md5',
                 '.tar.gz.sha1',
             ],
-            DOWNLOADS_HOST, 'downloads', 'core', sourceName
+            DOWNLOADS_HOST,
+            'downloads',
+            'core',
+            sourceName,
         ),
         coreZips: getCoreArchiveListUrlProvider(
             [
@@ -534,7 +538,10 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
                 '-new-bundled.zip.md5',
                 '-new-bundled.zip.sha1',
             ],
-            DOWNLOADS_HOST, 'downloads', 'core', sourceName
+            DOWNLOADS_HOST,
+            'downloads',
+            'core',
+            sourceName,
         ),
 
         coreStatusFilename: getFilenameSlugProvider('downloads', 'core', sourceName, 'release-status.json'),
@@ -544,7 +551,12 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         legacyPluginFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, `${sourceName}-plugin.json`),
         pluginStatusFilename: getFilenameSlugProvider('downloads', 'plugins', sourceName, 'plugin-status.json'),
         pluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, 'translations-1.0.json'),
-        legacyPluginTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'plugins', sourceName, `${sourceName}-translations-1.0.json`),
+        legacyPluginTranslationV1_0: getFilenameSlugVersionProvider(
+            'downloads',
+            'plugins',
+            sourceName,
+            `${sourceName}-translations-1.0.json`,
+        ),
         pluginZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName),
         pluginL10nZip: getSlugVersionLocaleUrlProvider(DOWNLOADS_HOST, 'downloads', 'plugins', sourceName),
         pluginSupport: getSlugUrlProvider('support', 'plugins', sourceName, 'support'),
@@ -558,12 +570,17 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
         legacyThemeFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, `${sourceName}-theme.json`),
         themeStatusFilename: getFilenameSlugProvider('downloads', 'themes', sourceName, 'theme-status.json'),
         themeTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'themes', sourceName, 'translations-1.0.json'),
-        legacyThemeTranslationV1_0: getFilenameSlugVersionProvider('downloads', 'themes', sourceName, `${sourceName}-translations-1.0.json`),
+        legacyThemeTranslationV1_0: getFilenameSlugVersionProvider(
+            'downloads',
+            'themes',
+            sourceName,
+            `${sourceName}-translations-1.0.json`,
+        ),
         themeZip: getSlugVersionOriginalUrlProvider('downloads', 'themes', sourceName),
         themeL10nZip: getSlugVersionLocaleUrlProvider(DOWNLOADS_HOST, 'downloads', 'themes', sourceName),
         themeHomepage: getSlugUrlProvider('support', 'themes', sourceName, 'homepages'),
         themeScreenshot: getSlugOriginalLiveUrlProvider('downloads', 'themes', sourceName, 'screenshots'),
         themePreview: getSlugLiveIndexUrlProvider('downloads', 'themes', sourceName, 'preview'),
         themeReviews: getSlugUrlProvider('support', 'themes', sourceName, 'reviews'),
-    }
+    };
 }

@@ -85,7 +85,6 @@ export interface ReleasesResult {
  *      opaque JSON data right now
  */
 
-
 /*
  * Translations
  */
@@ -185,7 +184,6 @@ export interface ThemeDetails extends Record<string, unknown> {
     is_community?: boolean;
     external_repository_url?: string;
 }
-
 
 /*
  * Plugins
@@ -381,10 +379,10 @@ export interface EventsResponseV1_0 {
  * results for `/core/browse-happy/1.1/` (POST)
  */
 export interface BrowseHappyResultV1_1 {
-    name: string,
-    version: string,
-    platform: string,
-    update_url: string,
+    name: string;
+    version: string;
+    platform: string;
+    update_url: string;
     img_src: string;
     img_src_ssl: string;
     current_version: string;

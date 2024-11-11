@@ -9,13 +9,13 @@ public assets.
 
 The tools now support four archive modes.
 
-* basic
-* live
-* zips
-* full
+- basic
+- live
+- zips
+- full
 
 A **basic** archive is the default. This is just an archive of
-the required meta data and *one* read-only zip file for each plugin or theme.
+the required meta data and _one_ read-only zip file for each plugin or theme.
 Only the current version is downloaded.
 
 A **live** archive adds copies of all of the current screenshots, sample pages, and
@@ -125,15 +125,13 @@ completed: Fri, 25 Oct 2024 04:29:51 GMT
 
 Note: It appears that plugins are being removed from the `api.wordpress.org` registry.
 
-
 After a **zips** download.
 
-* [TBD]
+- [TBD]
 
 After a **full** download.
 
-* [TBD]
-
+- [TBD]
 
 ### Themes
 
@@ -194,9 +192,7 @@ Total skipped:            0
 completed: Thu, 24 Oct 2024 16:22:37 GMT
 ```
 
-
 After a **zips** download.
-
 
 ```bash
 $ du -hs build/themes/*
@@ -215,7 +211,6 @@ Total skipped:            3
 completed: Fri, 25 Oct 2024 23:01:51 GMT
 ```
 
-
 After a **full** download.
 
 ```bash
@@ -227,8 +222,6 @@ $ du -hs build/themes/*
 
 ```text
 ```
-
-
 
 The execution of `thematic.ts --full --retry`, which uses the default `update`
 list on a 2 GB Droplet takes a little over 3 minutes.
@@ -322,13 +315,13 @@ the slug `hello-dolly`.
 
 Currently, the following list types are supported:
 
-* `subversion`
-* `interesting`
-* `defaults`
-* `featured`
-* `new`
-* `popular`
-* `updated`
+- `subversion`
+- `interesting`
+- `defaults`
+- `featured`
+- `new`
+- `popular`
+- `updated`
 
 The initial tools only supported gathering the list from the subversion page, so that list is
 called `subversion`. This page is
@@ -338,7 +331,7 @@ not exist. It is however, the largest list, if you don't want to miss anything.
 
 As an alternative, there are two sources. First, a list of slugs can be read from a file.
 This would allow for someone to easily create a mirror of the plugins and themes that they
-find *interesting*. So the list is named `interesting`.
+find _interesting_. So the list is named `interesting`.
 
 There is also the existing wordpress API at `api.wordpress.org`. This has REST API's that
 provide information about groups of plugins and themes. They have a `browse` parameter,
@@ -423,7 +416,7 @@ a single **overflow** prefix directory, with the name `zz+`.
 
 ### live leaf directory
 
-At the *leaf* of each plugin or theme directory structure is a **live**
+At the _leaf_ of each plugin or theme directory structure is a **live**
 directory. This directory contains an optional `screenshots` directory.
 Plugins may have a `banners` directory. Themes have an optional `preview` directory.
 The screenshots and banners are typically PNG format files, with some JPG or others.
@@ -433,15 +426,15 @@ The `preview` directory usually contains a single `index.html` file.
 
 Each plugin or theme has a directory that contains the **JSON** format files
 that describe the item and its contents. There are usually two files in
-the directory. A *legacy* file which comes from the upstream server, and
-the *active* file which may be used to serve API content. The *active*
+the directory. A _legacy_ file which comes from the upstream server, and
+the _active_ file which may be used to serve API content. The _active_
 file may be patched with data from multiple data sources, and may be
 redacted as well. It also has URLs translated to downsteam versions.
 
 ### read-only directory
 
 Each plugin or theme has a directory that contains **Zip** format files.
-These are the *contents* of the plugin or theme. They are archived
+These are the _contents_ of the plugin or theme. They are archived
 as **read-only** files as recieved from the upsteam source. The version
 number is embedded in the file name. In a **full** archive, most
 directories have multiple versions. In a **partial** archive, only a single
@@ -449,15 +442,15 @@ version is downloaded, although older versions are not purged.
 
 ### An example - acid-rain theme
 
-The **partial** archive of the *acid-rain* theme includes the following files:
+The **partial** archive of the _acid-rain_ theme includes the following files:
 
-* `themes/meta/ac/acid-rain/theme.json`
-* `themes/meta/ac/acid-rain/legacy-theme.json`
-* `themes/read-only/ac/acid-rain/acid-rain.1.1.zip`
+- `themes/meta/ac/acid-rain/theme.json`
+- `themes/meta/ac/acid-rain/legacy-theme.json`
+- `themes/read-only/ac/acid-rain/acid-rain.1.1.zip`
 
-The **full** archive of the *acid-rain* theme adds the following files:
+The **full** archive of the _acid-rain_ theme adds the following files:
 
-* `themes/live/ac/acid-rain/preview/index.html`
-* `themes/live/ac/acid-rain/screenshots/screenshot.png`
-* `themes/read-only/ac/acid-rain/acid-rain.1.0.1.zip`
-* `themes/read-only/ac/acid-rain/acid-rain.1.0.zip`
+- `themes/live/ac/acid-rain/preview/index.html`
+- `themes/live/ac/acid-rain/screenshots/screenshot.png`
+- `themes/read-only/ac/acid-rain/acid-rain.1.0.1.zip`
+- `themes/read-only/ac/acid-rain/acid-rain.1.0.zip`

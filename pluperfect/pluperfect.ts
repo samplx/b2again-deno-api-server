@@ -15,19 +15,34 @@
  *  limitations under the License.
  */
 
-import { parseArgs, ParseOptions } from "jsr:@std/cli/parse-args";
-import { ConsoleReporter, ENABLED_CONSOLE_REPORTER, DISABLED_CONSOLE_REPORTER, JsonReporter, DISABLED_JSON_REPORTER, getISOtimestamp, ENABLED_JSON_REPORTER } from "../lib/reporter.ts";
-import { getParseOptions, printHelp, type CommandOptions } from "./lib/options.ts";
-import getStandardLocations from "../lib/b2again-locations.ts";
-import { ArchiveGroupName, LiveUrlProviderResult, MigrationContext, StandardLocations, UrlProviderResult, VersionLocaleVersionUrlProvider } from "../lib/standards.ts";
-import { createCoreRequestGroup, getCoreReleases, getListOfReleases } from "./lib/core.ts";
-import { getInterestingSlugs, getInUpdateOrder, getItemLists, saveItemLists } from "./lib/item-lists.ts";
-import { downloadFile } from "./lib/downloads.ts";
-import { ArchiveGroupStatus } from "../lib/archive-status.ts";
-import * as path from "jsr:@std/path";
-import { createThemeRequestGroup } from "./lib/themes.ts";
-import { createPluginRequestGroup } from "./lib/plugins.ts";
-import { TranslationEntry, TranslationsResultV1_0 } from "../lib/api.ts";
+import { parseArgs, ParseOptions } from 'jsr:@std/cli/parse-args';
+import {
+    ConsoleReporter,
+    DISABLED_CONSOLE_REPORTER,
+    DISABLED_JSON_REPORTER,
+    ENABLED_CONSOLE_REPORTER,
+    ENABLED_JSON_REPORTER,
+    getISOtimestamp,
+    JsonReporter,
+} from '../lib/reporter.ts';
+import { type CommandOptions, getParseOptions, printHelp } from './lib/options.ts';
+import getStandardLocations from '../lib/b2again-locations.ts';
+import {
+    ArchiveGroupName,
+    LiveUrlProviderResult,
+    MigrationContext,
+    StandardLocations,
+    UrlProviderResult,
+    VersionLocaleVersionUrlProvider,
+} from '../lib/standards.ts';
+import { createCoreRequestGroup, getCoreReleases, getListOfReleases } from './lib/core.ts';
+import { getInterestingSlugs, getInUpdateOrder, getItemLists, saveItemLists } from './lib/item-lists.ts';
+import { downloadFile } from './lib/downloads.ts';
+import { ArchiveGroupStatus } from '../lib/archive-status.ts';
+import * as path from 'jsr:@std/path';
+import { createThemeRequestGroup } from './lib/themes.ts';
+import { createPluginRequestGroup } from './lib/plugins.ts';
+import { TranslationEntry, TranslationsResultV1_0 } from '../lib/api.ts';
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -93,7 +108,6 @@ export interface RequestGroup {
     noChanges: boolean;
 }
 
-
 /**
  * We need to translate "legacy" translations into the modern version
  * which involves changing the `package` URL. But the migrate function
@@ -110,16 +124,18 @@ export interface RequestGroup {
 export function getTranslationMigration(
     provider: VersionLocaleVersionUrlProvider,
     ctx: MigrationContext,
-    release: string
+    release: string,
 ): (original: Record<string, unknown>) => Record<string, unknown> {
     return function (o: Record<string, unknown>): Record<string, unknown> {
         if (o && (typeof o === 'object') && ('translations' in o) && Array.isArray(o.translations)) {
             const translations: Array<TranslationEntry> = [];
             for (const t of o.translations) {
-                if (t && (typeof t === 'object') &&
-                    ('package' in t) && (typeof t.package === 'string')) {
+                if (
+                    t && (typeof t === 'object') &&
+                    ('package' in t) && (typeof t.package === 'string')
+                ) {
                     const translation = t as TranslationEntry;
-                    const updated = { ... translation };
+                    const updated = { ...translation };
                     const pkg = provider(ctx, release, translation.version, translation.language);
                     updated.package = pkg.url.toString();
                     translations.push(updated);
@@ -130,7 +146,7 @@ export function getTranslationMigration(
             return { translations } as unknown as Record<string, unknown>;
         }
         return {};
-    }
+    };
 }
 
 /**
@@ -150,19 +166,19 @@ export async function filterTranslations(
     locales: ReadonlyArray<string>,
     legacyJson: string,
     migratedJson: string,
-    spaces: string
+    spaces: string,
 ): Promise<TranslationsResultV1_0> {
     if (locales.length === 0) {
         return originals;
     }
     const filteredMigratedTranslations = migrated.translations.filter((id) => locales.includes(id.language));
     const filteredOriginalsTranslations = originals.translations.filter((id) => locales.includes(id.language));
-    const filteredMigrated: TranslationsResultV1_0 =  {
-        translations: filteredMigratedTranslations
+    const filteredMigrated: TranslationsResultV1_0 = {
+        translations: filteredMigratedTranslations,
     };
     const filteredOriginals: TranslationsResultV1_0 = {
-        translations: filteredOriginalsTranslations
-    }
+        translations: filteredOriginalsTranslations,
+    };
     const migratedText = JSON.stringify(filteredMigrated, null, spaces);
     await Deno.writeTextFile(migratedJson, migratedText);
     const originalsText = JSON.stringify(filteredOriginals, null, spaces);
@@ -196,12 +212,12 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
     }
     for (const host in locations.ctx.hosts) {
         if (locations.ctx.hosts[host].baseDirectory) {
-            const writeAccess = await Deno.permissions.request({ name: 'write', path: locations.ctx.hosts[host].baseDirectory});
+            const writeAccess = await Deno.permissions.request({ name: 'write', path: locations.ctx.hosts[host].baseDirectory });
             if (writeAccess.state !== 'granted') {
                 console.error(`Error: write access is required to pluginsDir ${locations.ctx.hosts[host].baseDirectory}`);
                 return 1;
             }
-            const readAccess = await Deno.permissions.request({ name: 'read', path: locations.ctx.hosts[host].baseDirectory});
+            const readAccess = await Deno.permissions.request({ name: 'read', path: locations.ctx.hosts[host].baseDirectory });
             if (readAccess.state !== 'granted') {
                 console.error(`Error: read access is required to pluginsDir ${locations.ctx.hosts[host].baseDirectory}`);
                 return 1;
@@ -209,12 +225,12 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
         }
     }
     // check for permissions
-    const apiAccess = await Deno.permissions.request({ name: 'net', host: locations.apiHost});
+    const apiAccess = await Deno.permissions.request({ name: 'net', host: locations.apiHost });
     if (apiAccess.state !== 'granted') {
         console.error(`Error: network access is required to api host ${locations.apiHost}`);
         return 1;
     }
-    const downloadsAccess = await Deno.permissions.request({ name: 'net', host: locations.downloadsHost});
+    const downloadsAccess = await Deno.permissions.request({ name: 'net', host: locations.downloadsHost });
     if (downloadsAccess.state !== 'granted') {
         console.error(`Error: network access is required to downloads host ${locations.downloadsHost}`);
         return 1;
@@ -230,19 +246,34 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
  */
 async function downloadRequestGroup(
     options: CommandOptions,
-    group: RequestGroup
+    group: RequestGroup,
 ): Promise<boolean> {
     const groupStatus: ArchiveGroupStatus = await loadGroupStatus(group);
     if (downloadIsComplete(options, group, groupStatus)) {
-        jreporter({ operation: 'downloadRequestGroup', section: group.section, slug: group.slug, filename: group.statusFilename.pathname, is_complete: true, skipped: true });
+        jreporter({
+            operation: 'downloadRequestGroup',
+            section: group.section,
+            slug: group.slug,
+            filename: group.statusFilename.pathname,
+            is_complete: true,
+            skipped: true,
+        });
         return true;
     }
 
     let ok = true;
-    const filtered = group.requests.filter((item) => item.upstream && item.pathname && item.host &&
-                        (options.force || options.rehash || (groupStatus.files[item.pathname]?.status !== 'complete')));
+    const filtered = group.requests.filter((item) =>
+        item.upstream && item.pathname && item.host &&
+        (options.force || options.rehash || (groupStatus.files[item.pathname]?.status !== 'complete'))
+    );
 
-    jreporter({ operation: 'downloadRequestGroup', section: group.section, slug: group.slug, action: 'filtered', size: filtered.length });
+    jreporter({
+        operation: 'downloadRequestGroup',
+        section: group.section,
+        slug: group.slug,
+        action: 'filtered',
+        size: filtered.length,
+    });
     for (const item of filtered) {
         if (item.upstream && item.pathname && item.host) {
             // we need this one
@@ -277,7 +308,14 @@ async function downloadRequestGroup(
     }
     groupStatus.is_complete = ok;
 
-    jreporter({ operation: 'downloadRequestGroup', section: group.section, slug: group.slug, filename: group.statusFilename.pathname, is_complete: ok, skipped: false });
+    jreporter({
+        operation: 'downloadRequestGroup',
+        section: group.section,
+        slug: group.slug,
+        filename: group.statusFilename.pathname,
+        is_complete: ok,
+        skipped: false,
+    });
     await saveGroupStatus(group, groupStatus, options.jsonSpaces);
 
     return groupStatus.is_complete;
@@ -291,7 +329,7 @@ async function downloadRequestGroup(
 function downloadIsComplete(
     options: CommandOptions,
     group: RequestGroup,
-    groupStatus: ArchiveGroupStatus
+    groupStatus: ArchiveGroupStatus,
 ): boolean {
     if (options.synced && group.noChanges) {
         return true;
@@ -341,13 +379,14 @@ async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus>
         slug: group.slug,
         is_complete: false,
         when: Date.now(),
-        files: {}
+        files: {},
     };
     if (group.statusFilename.pathname) {
         try {
             const contents = await Deno.readTextFile(group.statusFilename.pathname);
             const parsed = JSON.parse(contents);
-            if (parsed &&
+            if (
+                parsed &&
                 (typeof parsed === 'object') &&
                 ('files' in parsed) &&
                 (typeof parsed.files === 'object')
@@ -367,7 +406,7 @@ async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus>
  * @returns the list of interesting locales, or an empty list to indicate all.
  */
 async function getListOfLocales(
-    locations: StandardLocations
+    locations: StandardLocations,
 ): Promise<Array<string>> {
     if (locations.interestingLocales) {
         const { pathname } = locations.interestingLocales(locations.ctx);
@@ -390,7 +429,7 @@ async function coreSection(
     locations: StandardLocations,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const [ changed, releasesMap ] = await getCoreReleases(reporter, jreporter, options, locations);
+    const [changed, releasesMap] = await getCoreReleases(reporter, jreporter, options, locations);
     if (!changed && options.synced) {
         jreporter({ operation: 'coreSection', action: 'no-changes' });
         return;
@@ -475,7 +514,6 @@ async function themesSection(
 }
 
 /**
- *
  * @param argv arguments passed after the `deno run -N pluperfect.ts`
  * @returns 0 if ok, 1 on error, 2 on usage errors.
  */
@@ -508,11 +546,10 @@ async function main(argv: Array<string>): Promise<number> {
     await pluginsSection(options, locations, locales);
     await themesSection(options, locations, locales);
     await coreSection(options, locations, locales);
-    jreporter({operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
+    jreporter({ operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
     reporter(`finished:   ${getISOtimestamp()}`);
     return 0;
 }
 
 const exitCode: number = await main(Deno.args);
 Deno.exit(exitCode);
-

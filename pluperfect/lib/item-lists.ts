@@ -14,11 +14,17 @@
  *  limitations under the License.
  */
 
-import { CommandOptions } from "./options.ts";
-import { parse } from "jsr:@std/jsonc";
-import * as path from "jsr:@std/path";
-import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { CommonUrlProvider, META_LIST_SLUG_VALUES, MetaListItemType, MetaListSlug, StandardLocations } from "../../lib/standards.ts";
+import { CommandOptions } from './options.ts';
+import { parse } from 'jsr:@std/jsonc';
+import * as path from 'jsr:@std/path';
+import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import {
+    CommonUrlProvider,
+    META_LIST_SLUG_VALUES,
+    MetaListItemType,
+    MetaListSlug,
+    StandardLocations,
+} from '../../lib/standards.ts';
 
 export type ItemBrowseOptions = 'featured' | 'new' | 'popular' | 'updated' | undefined;
 
@@ -42,14 +48,14 @@ function getItemListUrl(
     apiHost: string,
     itemType: MetaListItemType,
     pageNumber: number = 1,
-    browse?: ItemBrowseOptions
+    browse?: ItemBrowseOptions,
 ): URL {
     const url = new URL(`/${itemType}s/info/1.2/`, `https://${apiHost}`);
     url.searchParams.append('action', `query_${itemType}s`);
     if (itemType === 'plugin') {
-        url.searchParams.append('fields[]','last_updated');
+        url.searchParams.append('fields[]', 'last_updated');
     } else {
-        url.searchParams.append('fields[]','last_updated_time');
+        url.searchParams.append('fields[]', 'last_updated_time');
     }
     // url.searchParams.append('fields[]','ratings');
     // url.searchParams.append('fields[]','active_installs');
@@ -75,7 +81,7 @@ async function getAPIItemList(
     jreporter: JsonReporter,
     apiHost: string,
     itemType: MetaListItemType,
-    browse: ItemBrowseOptions
+    browse: ItemBrowseOptions,
 ): Promise<Array<ItemType>> {
     const collection: Array<ItemType> = [];
     let pages: number = 1;
@@ -93,18 +99,24 @@ async function getAPIItemList(
                 const all = json[`${itemType}s`];
                 if (all) {
                     all.forEach((item: unknown) => {
-                        if (item &&
+                        if (
+                            item &&
                             (typeof item === 'object') &&
                             ('slug' in item) &&
-                            (typeof item.slug === 'string')) {
+                            (typeof item.slug === 'string')
+                        ) {
                             let updated: undefined | string;
-                            if (('last_updated_time' in item) &&
-                                (typeof item.last_updated_time === 'string')) {
+                            if (
+                                ('last_updated_time' in item) &&
+                                (typeof item.last_updated_time === 'string')
+                            ) {
                                 // theme:  "last_updated_time": "2024-07-16 13:32:12",
                                 const last_updated_time = item.last_updated_time;
                                 updated = `${last_updated_time.substring(0, 10)}T${last_updated_time.substring(11)}Z`;
-                            } else if (('last_updated' in item) &&
-                                       (typeof item.last_updated === 'string')) {
+                            } else if (
+                                ('last_updated' in item) &&
+                                (typeof item.last_updated === 'string')
+                            ) {
                                 // plugin: "last_updated": "2024-08-05 2:02pm GMT",
                                 updated = `${item.last_updated.substring(0, 10)}T00:00:00Z`;
                             }
@@ -131,7 +143,7 @@ async function getUnlimitedItemList(
     jreporter: JsonReporter,
     locations: StandardLocations,
     itemType: MetaListItemType,
-    kind: MetaListSlug
+    kind: MetaListSlug,
 ): Promise<Array<ItemType>> {
     if (kind === 'interesting') {
         const interesting = locations[`${itemType}Slugs`].interesting;
@@ -174,7 +186,7 @@ export async function getItemList(
     jreporter: JsonReporter,
     locations: StandardLocations,
     itemType: MetaListItemType,
-    kind: MetaListSlug
+    kind: MetaListSlug,
 ): Promise<Array<ItemType>> {
     const list = await getUnlimitedItemList(reporter, jreporter, locations, itemType, kind);
     return list;
@@ -290,7 +302,7 @@ export function getInUpdateOrder(lists: ItemLists): Array<string> {
             return lists.updated.map((item) => item.slug);
         } else {
             const front = listRemoval(lists.updated, lists.effective);
-            const inOrder = [ ...front, ...lists.updated ];
+            const inOrder = [...front, ...lists.updated];
             return inOrder.map((item) => item.slug);
         }
     }
@@ -306,9 +318,8 @@ export async function getItemLists(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     locations: StandardLocations,
-    itemType: MetaListItemType
+    itemType: MetaListItemType,
 ): Promise<ItemLists> {
-
     let defaults: Array<ItemType> = [];
     let featured: Array<ItemType> = [];
     let introduced: Array<ItemType> = [];
@@ -357,7 +368,7 @@ export async function getItemLists(
         updated = listIntersection(interesting, updated);
         effective = listRemoval(rejected, interesting);
     } else {
-        const union = listUnion([ popular, updated, introduced, featured, defaults ]);
+        const union = listUnion([popular, updated, introduced, featured, defaults]);
         effective = listRemoval(rejected, union);
     }
 
@@ -369,7 +380,7 @@ export async function getItemLists(
         'new': introduced,
         popular,
         updated,
-        rejected
+        rejected,
     };
 }
 
@@ -388,10 +399,10 @@ export async function saveItemLists(
     locations: StandardLocations,
     options: CommandOptions,
     itemType: MetaListItemType,
-    lists: ItemLists
+    lists: ItemLists,
 ): Promise<void> {
     const perItem = locations[`${itemType}Slugs`] as {
-        [ Property in MetaListSlug ]?: CommonUrlProvider;
+        [Property in MetaListSlug]?: CommonUrlProvider;
     };
     for (const root of META_LIST_SLUG_VALUES) {
         if (perItem[root] && lists[root] && (root !== 'interesting') && (root !== 'rejected')) {
@@ -417,7 +428,7 @@ export async function saveItemLists(
 export async function getInterestingSlugs(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    filename: string
+    filename: string,
 ): Promise<Array<string>> {
     const list: Array<string> = [];
     try {
@@ -427,7 +438,7 @@ export async function getInterestingSlugs(
             if (!Array.isArray(jsonc)) {
                 console.error(`Error: JSON w/comments in ${filename} is not an Array.`);
             } else {
-                for (let n=0; n < jsonc.length; n++) {
+                for (let n = 0; n < jsonc.length; n++) {
                     if (typeof jsonc[n] === 'string') {
                         list.push(jsonc[n]);
                     }
@@ -466,7 +477,7 @@ async function getInterestingItems(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     filename: string,
-    updated?: undefined | string
+    updated?: undefined | string,
 ): Promise<Array<ItemType>> {
     const list: Array<ItemType> = [];
     const slugs = await getInterestingSlugs(reporter, jreporter, filename);

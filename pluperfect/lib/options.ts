@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { ParseOptions } from "jsr:@std/cli/parse-args";
+import { ParseOptions } from 'jsr:@std/cli/parse-args';
 
 /** default number of items without changes to be processed before stopping - 0 don't stop. */
 export const DEFAULT_NO_CHANGE_COUNT: number = 0;
@@ -126,8 +126,8 @@ export function getParseOptions(): ParseOptions {
         unknown: (arg: string): unknown => {
             console.error(`Warning: unrecognized option ignored '${arg}'`);
             return false;
-        }
-    }
+        },
+    };
 }
 
 /**

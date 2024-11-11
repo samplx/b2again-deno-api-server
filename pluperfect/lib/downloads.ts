@@ -15,12 +15,12 @@
  */
 
 /// <reference types="npm:@types/node" />
-import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import * as path from "jsr:@std/path";
-import { ArchiveFileSummary } from "../../lib/archive-status.ts";
-import { ContentHostType, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
+import { createHash } from 'node:crypto';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import * as path from 'jsr:@std/path';
+import { ArchiveFileSummary } from '../../lib/archive-status.ts';
+import { ContentHostType, StandardLocations, UrlProviderResult } from '../../lib/standards.ts';
 
 /**
  * A simple Either-like interface for an error (left-side) value.
@@ -44,7 +44,7 @@ async function isDownloadNeeded(
     }
     let needed = false;
     try {
-        const fileInfo = await Deno.lstat(details.pathname)
+        const fileInfo = await Deno.lstat(details.pathname);
         if (!fileInfo.isFile || force) {
             await Deno.remove(details.pathname, { recursive: true });
             needed = true;
@@ -78,18 +78,24 @@ async function fetchFile(
     await Deno.mkdir(targetDir, { recursive: true });
     const output = createWriteStream(details.pathname, {
         flags: 'wx',
-        encoding: 'binary'
+        encoding: 'binary',
     });
     const response = await fetch(details.upstream);
     if (!response.ok || !response.body) {
         output.close();
-        jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.pathname, error: `${response.status}`});
+        jreporter({
+            operation: 'downloadFile',
+            action: 'fetch',
+            sourceUrl: details.upstream,
+            filename: details.pathname,
+            error: `${response.status}`,
+        });
         return {
             host: details.host,
             filename: details.pathname,
             status: 'failed',
             is_readonly: false,
-            when
+            when,
         };
     }
     for await (const chunk of response.body) {
@@ -113,8 +119,8 @@ async function fetchFile(
         when,
         md5,
         sha1,
-        sha256
-    }
+        sha256,
+    };
 }
 
 /**
@@ -154,8 +160,13 @@ async function recalculateHashes(
                     sha256 = sha256hash.digest('hex');
                     md5 = md5hash.digest('hex');
                     sha1 = sha1hash.digest('hex');
-                    jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.pathname});
-                    resolve ({
+                    jreporter({
+                        operation: 'downloadFile',
+                        action: 'rehash',
+                        sourceUrl: details.upstream,
+                        filename: details.pathname,
+                    });
+                    resolve({
                         host: details.host,
                         filename: details.pathname,
                         status: 'complete',
@@ -163,7 +174,7 @@ async function recalculateHashes(
                         when,
                         sha256,
                         md5,
-                        sha1
+                        sha1,
                     });
                 })
                 .on('data', (chunk) => {
@@ -175,7 +186,13 @@ async function recalculateHashes(
         });
     } catch (e) {
         console.error(`Error: ${e} unable to read file to compute hashes: ${details.pathname}`);
-        jreporter({operation: 'downloadFile', action: 'rehash', sourceUrl: details.upstream, filename: details.pathname, error: e});
+        jreporter({
+            operation: 'downloadFile',
+            action: 'rehash',
+            sourceUrl: details.upstream,
+            filename: details.pathname,
+            error: e,
+        });
         return {
             host: details.host,
             filename: details.pathname,
@@ -184,7 +201,6 @@ async function recalculateHashes(
             when,
         };
     }
-
 }
 
 /**
@@ -203,7 +219,7 @@ export async function downloadFile(
     jreporter: JsonReporter,
     details: UrlProviderResult,
     force: boolean = false,
-    needHash: boolean = true
+    needHash: boolean = true,
 ): Promise<ArchiveFileSummary> {
     if (!details.host || !details.pathname || !details.upstream) {
         throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
@@ -218,20 +234,33 @@ export async function downloadFile(
             return await fetchFile(jreporter, details);
         } catch (e) {
             console.error(`Error: unable to save file: ${details.pathname}`);
-            jreporter({operation: 'downloadFile', action: 'fetch', sourceUrl: details.upstream, filename: details.pathname, error: e});
+            jreporter({
+                operation: 'downloadFile',
+                action: 'fetch',
+                sourceUrl: details.upstream,
+                filename: details.pathname,
+                error: e,
+            });
             return {
                 host: details.host,
                 filename: details.pathname,
                 status: 'failed',
                 is_readonly: false,
-                when
+                when,
             };
         }
     }
     if (needHash) {
         return await recalculateHashes(jreporter, details);
     }
-    jreporter({operation: 'downloadFile', action: 'existing', sourceUrl: details.upstream, filename: details.pathname, needHash, needed });
+    jreporter({
+        operation: 'downloadFile',
+        action: 'existing',
+        sourceUrl: details.upstream,
+        filename: details.pathname,
+        needHash,
+        needed,
+    });
     return {
         host: details.host,
         filename: details.pathname,
@@ -251,7 +280,7 @@ export async function downloadFile(
 function liveFilename(
     name: string,
     middle: string,
-    middleLength: number
+    middleLength: number,
 ): string {
     const center = (middleLength > middle.length) ? middle : middle.substring(0, middleLength);
     const lastDot = name.lastIndexOf('.');
@@ -288,7 +317,7 @@ export async function downloadLiveFile(
     sourceUrl: URL,
     targetDir: string,
     originalName: string,
-    middleLength: number
+    middleLength: number,
 ): Promise<ArchiveFileSummary> {
     const filename = path.join(targetDir, liveFilename(originalName, 'download', middleLength));
     if (!locations.ctx.hosts[host] || !locations.ctx.hosts[host].baseUrl) {
@@ -297,12 +326,12 @@ export async function downloadLiveFile(
     const details = { host, upstream: sourceUrl.toString(), filename, url: sourceUrl };
     const info = await downloadFile(reporter, jreporter, details, true);
     if (middleLength === 0) {
-        jreporter({operation: 'downloadLiveFile', filename});
+        jreporter({ operation: 'downloadLiveFile', filename });
         return info;
     }
     if ((info.status === 'complete') && (typeof info.sha256 === 'string')) {
         const finalName = path.join(targetDir, liveFilename(originalName, info.sha256, middleLength));
-        const updated = { ... info };
+        const updated = { ...info };
         updated.filename = finalName;
         try {
             // a rename would keep the new file, we want to keep the old one
@@ -313,7 +342,7 @@ export async function downloadLiveFile(
             // (at least when the lstat was executed the file didn't exist, so rename)
             try {
                 await Deno.rename(filename, finalName);
-                jreporter({operation: 'downloadLiveFile', finalName});
+                jreporter({ operation: 'downloadLiveFile', finalName });
             } catch (_) {
                 // ignore second failure
             }
@@ -332,11 +361,11 @@ export async function downloadLiveFile(
  * @param migrate how to convert from legacy to modern.
  * @returns tuple of the legacy data and the modern data.
  */
-async function readMetaLegacyJson<T extends Record<string, unknown>> (
+async function readMetaLegacyJson<T extends Record<string, unknown>>(
     legacyJson: string,
     migratedJson: string,
-    force: boolean
-): Promise<[ T, T ]> {
+    force: boolean,
+): Promise<[T, T]> {
     if (force) {
         await Deno.remove(migratedJson, { recursive: true });
         await Deno.remove(legacyJson, { recursive: true });
@@ -345,7 +374,7 @@ async function readMetaLegacyJson<T extends Record<string, unknown>> (
     const legacy = JSON.parse(legacyContents);
     const migratedContents = await Deno.readTextFile(migratedJson);
     const migrated = JSON.parse(migratedContents);
-    return [ legacy, migrated ];
+    return [legacy, migrated];
 }
 
 /**
@@ -365,12 +394,12 @@ async function fetchMetaLegacyJson<T extends Record<string, unknown>>(
     migratedJson: string,
     url: URL,
     spaces: string,
-    migrate: (original: T) => T
-): Promise<[ T, T ]> {
+    migrate: (original: T) => T,
+): Promise<[T, T]> {
     const response = await fetch(url);
     if (!response.ok) {
         const error = { error: `${response.status} ${response.statusText}` } as unknown as T;
-        return [ error, error ] ;
+        return [error, error];
     }
 
     const legacy = await response.json();
@@ -382,7 +411,7 @@ async function fetchMetaLegacyJson<T extends Record<string, unknown>>(
     await Deno.writeTextFile(migratedJson, migratedText);
     await Deno.writeTextFile(legacyJson, legacyText);
 
-    return [ legacy, migrated ];
+    return [legacy, migrated];
 }
 
 /**
@@ -408,29 +437,52 @@ export async function downloadMetaLegacyJson<T extends Record<string, unknown>>(
     url: URL,
     force: boolean,
     spaces: string,
-    migrate: (original: T) => T
-): Promise<[ T, T ]> {
+    migrate: (original: T) => T,
+): Promise<[T, T]> {
     try {
-        const [ legacy, migrated ] = await readMetaLegacyJson(legacyJson, migratedJson, force);
-        jreporter({operation: 'downloadMetaLegacyJson', action: 'read', host, url: url.toString(), migratedJson, legacyJson});
-        return [ legacy as T, migrated as T];
+        const [legacy, migrated] = await readMetaLegacyJson(legacyJson, migratedJson, force);
+        jreporter({ operation: 'downloadMetaLegacyJson', action: 'read', host, url: url.toString(), migratedJson, legacyJson });
+        return [legacy as T, migrated as T];
     } catch (_) {
         reporter(`fetch(${url}) > ${legacyJson}`);
         try {
-            const [ legacy, migrated ] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+            const [legacy, migrated] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
             if (legacy.error) {
                 console.error(`downloadMetaLegacyJson: legacy.error: ${legacy.error}`);
                 reporter(`fetch failed: ${legacy.error}`);
-                jreporter({operation: 'downloadMetaLegacyJson', action: 'fetch', host, url: url.toString(), migratedJson, legacyJson, error: legacy.error });
+                jreporter({
+                    operation: 'downloadMetaLegacyJson',
+                    action: 'fetch',
+                    host,
+                    url: url.toString(),
+                    migratedJson,
+                    legacyJson,
+                    error: legacy.error,
+                });
             } else {
-                jreporter({operation: 'downloadMetaLegacyJson', action: 'fetch', host, url: url.toString(), migratedJson, legacyJson})
+                jreporter({
+                    operation: 'downloadMetaLegacyJson',
+                    action: 'fetch',
+                    host,
+                    url: url.toString(),
+                    migratedJson,
+                    legacyJson,
+                });
             }
-            return [ legacy, migrated ];
+            return [legacy, migrated];
         } catch (e) {
-            jreporter({operation: 'downloadMetaLegacyJson', action: 'fetch', host, url: url.toString(), migratedJson, legacyJson, error: `${e}`})
+            jreporter({
+                operation: 'downloadMetaLegacyJson',
+                action: 'fetch',
+                host,
+                url: url.toString(),
+                migratedJson,
+                legacyJson,
+                error: `${e}`,
+            });
             const error = { error: `${e}` } as unknown as T;
             console.error(`downloadMetaLegacyJson: second catch: ${e}`);
-            return [ error, error ] ;
+            return [error, error];
         }
     }
 }
@@ -458,30 +510,29 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
     migratedJson: string,
     url: URL,
     spaces: string,
-    migrate: (original: T) => T
-): Promise<[ boolean, T, T ]> {
-
+    migrate: (original: T) => T,
+): Promise<[boolean, T, T]> {
     // first check to see if the files exist, if not, they are changed
     try {
         await Deno.lstat(legacyJson);
         await Deno.lstat(migratedJson);
     } catch (_) {
-        const [ legacy, migrated ] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
-        return [ true, legacy, migrated ];
+        const [legacy, migrated] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+        return [true, legacy, migrated];
     }
 
     // both the files exist, so we download a temporary copy
     let tempLegacy;
     try {
         const metaDir = path.dirname(legacyJson);
-        tempLegacy = await Deno.makeTempFile({ dir: metaDir, prefix: 'probe-', suffix: '.json'});
-        const [ legacy, migrated ] = await readMetaLegacyJson(legacyJson, migratedJson, false);
+        tempLegacy = await Deno.makeTempFile({ dir: metaDir, prefix: 'probe-', suffix: '.json' });
+        const [legacy, migrated] = await readMetaLegacyJson(legacyJson, migratedJson, false);
         const tempJson = await downloadMetaJson(reporter, jreporter, host, tempLegacy, url, true, spaces);
         const tempContents = await Deno.readFile(tempLegacy);
         const legacyContents = await Deno.readFile(legacyJson);
         let same = true;
         if (tempContents.length === legacyContents.length) {
-            for (let n=0; n < tempContents.length; n++) {
+            for (let n = 0; n < tempContents.length; n++) {
                 same = same && (tempContents.at(n) === legacyContents.at(n));
                 if (!same) {
                     break;
@@ -490,7 +541,7 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
         }
         if (same) {
             await Deno.remove(tempLegacy, { recursive: true });
-            return [ false, legacy as T, migrated as T ];
+            return [false, legacy as T, migrated as T];
         }
         await Deno.remove(legacyJson, { recursive: true });
         const newMigrated = migrate(tempJson as T);
@@ -509,8 +560,8 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
             }
         }
     }
-    const [ legacy, migrated ] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
-    return [ true, legacy, migrated ];
+    const [legacy, migrated] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+    return [true, legacy, migrated];
 }
 
 /**
@@ -530,7 +581,6 @@ async function readMetaJson(
     const contents = await Deno.readTextFile(jsonFilename);
     const json = JSON.parse(contents);
     return json;
-
 }
 
 /**
@@ -543,7 +593,7 @@ async function readMetaJson(
 async function fetchMetaJson(
     jsonFilename: string,
     url: URL,
-    spaces: string
+    spaces: string,
 ): Promise<unknown> {
     try {
         const response = await fetch(url);
@@ -581,11 +631,11 @@ export async function downloadMetaJson(
     jsonFilename: string,
     url: URL,
     force: boolean,
-    spaces: string
+    spaces: string,
 ): Promise<unknown> {
     try {
         const json = await readMetaJson(jsonFilename, force);
-        jreporter({operation: 'downloadMetaJson', action: 'read', host, url: url.toString(), jsonFilename})
+        jreporter({ operation: 'downloadMetaJson', action: 'read', host, url: url.toString(), jsonFilename });
         return json;
     } catch (_) {
         reporter(`fetch(${url}) > ${jsonFilename}`);
@@ -593,16 +643,21 @@ export async function downloadMetaJson(
             const response = await fetchMetaJson(jsonFilename, url, spaces);
             if (response && (typeof response === 'object') && ('error' in response)) {
                 reporter(`fetch failed: ${response.error}`);
-                jreporter({operation: 'downloadMetaJson', action: 'fetch', host, url: url.toString(), jsonFilename, error: response.error });
+                jreporter({
+                    operation: 'downloadMetaJson',
+                    action: 'fetch',
+                    host,
+                    url: url.toString(),
+                    jsonFilename,
+                    error: response.error,
+                });
             } else {
-                jreporter({operation: 'downloadMetaJson', action: 'fetch', host, url: url.toString(), jsonFilename})
+                jreporter({ operation: 'downloadMetaJson', action: 'fetch', host, url: url.toString(), jsonFilename });
             }
             return response;
         } catch (e) {
-            jreporter({operation: 'downloadMetaJson', action: 'fetch', host, url: url.toString(), error: e});
+            jreporter({ operation: 'downloadMetaJson', action: 'fetch', host, url: url.toString(), error: e });
             return { error: e };
         }
     }
 }
-
-

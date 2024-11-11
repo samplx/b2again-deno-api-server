@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { ContentHostType, ArchiveGroupName } from "./standards.ts";
+import { ArchiveGroupName, ContentHostType } from './standards.ts';
 
 /**
  * Classification of a download group or file.
@@ -98,6 +98,5 @@ export interface ArchiveGroupStatus {
  * Summary of information about a group, we remove the bulky `files` field.
  */
 export type ArchiveGroupSummary = {
-    [Property in keyof ArchiveGroupStatus as Exclude<Property, 'files'>]: ArchiveGroupStatus
-}
-
+    [Property in keyof ArchiveGroupStatus as Exclude<Property, 'files'>]: ArchiveGroupStatus;
+};

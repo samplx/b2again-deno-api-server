@@ -13,14 +13,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-import { ReleaseStatus, TranslationsResultV1_0 } from "../../lib/api.ts";
-import { CommandOptions } from "./options.ts";
-import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
-import { LiveUrlProviderResult, StandardLocations, UrlProviderResult } from "../../lib/standards.ts";
-import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { getInterestingSlugs } from "./item-lists.ts";
-import { getTranslationMigration, filterTranslations, RequestGroup } from "../pluperfect.ts";
-import { compareVersions } from "https://deno.land/x/compare_versions@0.4.0/compare-versions.ts";
+import { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
+import { CommandOptions } from './options.ts';
+import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
+import { LiveUrlProviderResult, StandardLocations, UrlProviderResult } from '../../lib/standards.ts';
+import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { getInterestingSlugs } from './item-lists.ts';
+import { filterTranslations, getTranslationMigration, RequestGroup } from '../pluperfect.ts';
+import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 
 /**
  * migrated view of the 'releases' (stability-check) file.
@@ -39,7 +39,7 @@ export interface CoreReleases {
 function translateRelease(o: Record<string, unknown>): Record<string, unknown> {
     const release: CoreReleases = {
         insecure: [],
-        outdated: []
+        outdated: [],
     };
     if (o && (typeof o === 'object')) {
         const releasesMap = o as Record<string, string>;
@@ -67,18 +67,26 @@ export async function getCoreReleases(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     options: CommandOptions,
-    locations: StandardLocations
-): Promise<[ boolean, Record<string, ReleaseStatus> ]> {
+    locations: StandardLocations,
+): Promise<[boolean, Record<string, ReleaseStatus>]> {
     const apiUrl = new URL(`/core/stable-check/1.0/`, `https://${locations.apiHost}/`);
     const legacyJson = locations.legacyReleases(locations.ctx);
     const migratedJson = locations.releases(locations.ctx);
     if (!migratedJson.host || !legacyJson.pathname || !migratedJson.pathname) {
         throw new Deno.errors.NotSupported(`locations values for releases are not valid.`);
     }
-    const [ changed, releases, _migrated ] = await probeMetaLegacyJson(reporter, jreporter, migratedJson.host,
-        legacyJson.pathname, migratedJson.pathname, apiUrl, options.jsonSpaces, translateRelease);
+    const [changed, releases, _migrated] = await probeMetaLegacyJson(
+        reporter,
+        jreporter,
+        migratedJson.host,
+        legacyJson.pathname,
+        migratedJson.pathname,
+        apiUrl,
+        options.jsonSpaces,
+        translateRelease,
+    );
     if (releases && typeof releases === 'object') {
-        return [ changed, releases as Record<string, ReleaseStatus> ];
+        return [changed, releases as Record<string, ReleaseStatus>];
     }
     throw new Deno.errors.BadResource(`unable to read core stable-check data`);
 }
@@ -94,7 +102,7 @@ export async function getListOfReleases(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     locations: StandardLocations,
-    releasesMap: Record<string, ReleaseStatus>
+    releasesMap: Record<string, ReleaseStatus>,
 ): Promise<Array<string>> {
     if (locations.interestingReleases) {
         const { host, pathname } = locations.interestingReleases(locations.ctx);
@@ -130,7 +138,7 @@ export async function getCoreTranslations(
     options: CommandOptions,
     release: string,
     outdated: boolean,
-    locales: ReadonlyArray<string>
+    locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
     const apiUrl = new URL(`/translations/core/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
@@ -140,15 +148,29 @@ export async function getCoreTranslations(
         throw new Deno.errors.NotSupported(`coreTranslationV1_0 location and legacyCoreTranslationV1_0 are misconfigured.`);
     }
     const migrator = getTranslationMigration(locations.coreL10nZip, locations.ctx, release);
-    const [ originalTranslations, migratedTranslations ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
-        legacyJson.pathname, migratedJson.pathname, apiUrl, options.force || outdated,
-        options.jsonSpaces, migrator);
+    const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
+        reporter,
+        jreporter,
+        migratedJson.host,
+        legacyJson.pathname,
+        migratedJson.pathname,
+        apiUrl,
+        options.force || outdated,
+        options.jsonSpaces,
+        migrator,
+    );
     const originals = originalTranslations as unknown as TranslationsResultV1_0;
     const migrated = migratedTranslations as unknown as TranslationsResultV1_0;
     if (locales.length > 0) {
         // we need to filter the locales to the ones that are "interesting"
-        return await filterTranslations(originals, migrated, locales,
-            legacyJson.pathname, migratedJson.pathname, options.jsonSpaces);
+        return await filterTranslations(
+            originals,
+            migrated,
+            locales,
+            legacyJson.pathname,
+            migratedJson.pathname,
+            options.jsonSpaces,
+        );
     }
     return originals;
 }
@@ -162,7 +184,7 @@ export async function getCoreTranslations(
 export function getChecksums(
     locations: StandardLocations,
     release: string,
-    locale: string
+    locale: string,
 ): UrlProviderResult {
     const apiUrl = new URL(`/core/checksums/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
@@ -186,14 +208,13 @@ export function getChecksums(
 export function getCredits(
     locations: StandardLocations,
     release: string,
-    locale: string
+    locale: string,
 ): UrlProviderResult {
     const apiUrl = new URL(`/core/credits/1.1/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
     return locations.coreCreditsV1_1(locations.ctx, release, locale, apiUrl.toString());
 }
-
 
 /**
  * Read a release and locale specific set of importers from the upstream API.
@@ -204,14 +225,13 @@ export function getCredits(
 export function getImporters(
     locations: StandardLocations,
     release: string,
-    locale: string
+    locale: string,
 ): UrlProviderResult {
     const apiUrl = new URL(`/core/importers/1.1/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
     return locations.coreImportersV1_1(locations.ctx, release, locale, apiUrl.toString());
 }
-
 
 /**
  * determine which files need to be downloaded for a core release.
@@ -229,7 +249,7 @@ export async function createCoreRequestGroup(
     options: CommandOptions,
     locations: StandardLocations,
     locales: ReadonlyArray<string>,
-    release: string
+    release: string,
 ): Promise<RequestGroup> {
     const requests: Array<UrlProviderResult> = [];
     const liveRequests: Array<LiveUrlProviderResult> = [];
@@ -255,7 +275,9 @@ export async function createCoreRequestGroup(
                 // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
                 // these only exist if translation.version === release. i.e. they have been released.
                 requests.push(getChecksums(locations, release, translation.language));
-                const zips = locations.coreL10nZips.map((func) => func(locations.ctx, release, translation.version, translation.language));
+                const zips = locations.coreL10nZips.map((func) =>
+                    func(locations.ctx, release, translation.version, translation.language)
+                );
                 requests.push(...zips);
             }
         }
@@ -275,7 +297,6 @@ export async function createCoreRequestGroup(
         statusFilename: locations.coreStatusFilename(locations.ctx, release),
         requests,
         liveRequests,
-        noChanges: false
+        noChanges: false,
     });
-
 }

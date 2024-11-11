@@ -14,15 +14,14 @@
  *  limitations under the License.
  */
 
-import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from "../../lib/api.ts";
-import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from "../../lib/migration.ts";
-import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { MigrationContext, StandardLocations  } from "../../lib/standards.ts";
-import { migrateRatings, RequestGroup } from "../pluperfect.ts";
-import { filterTranslations, getTranslationMigration } from "../pluperfect.ts";
-import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
-import { CommandOptions } from "./options.ts";
-
+import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from '../../lib/api.ts';
+import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
+import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { MigrationContext, StandardLocations } from '../../lib/standards.ts';
+import { migrateRatings, RequestGroup } from '../pluperfect.ts';
+import { filterTranslations, getTranslationMigration } from '../pluperfect.ts';
+import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
+import { CommandOptions } from './options.ts';
 
 /**
  * migrate theme author resources.
@@ -36,11 +35,13 @@ function migrateAuthor(author: unknown): string | ThemeAuthor {
         }
         return author;
     }
-    if (author &&
+    if (
+        author &&
         (typeof author === 'object') &&
         ('user_nicename' in author) &&
         (typeof author.user_nicename === 'string') &&
-        (author.user_nicename.indexOf('@') < 0)) {
+        (author.user_nicename.indexOf('@') < 0)
+    ) {
         const updated: ThemeAuthor = structuredClone(author) as ThemeAuthor;
         updated.user_nicename = `${author.user_nicename}@wordpress.org`;
         return updated;
@@ -56,7 +57,7 @@ function migrateAuthor(author: unknown): string | ThemeAuthor {
  * @returns migrated information about the parent theme.
  */
 function migrateParent(locations: StandardLocations, slug: string, parent: ThemeParent): ThemeParent {
-    const migrated = { ... parent };
+    const migrated = { ...parent };
     if (parent.homepage) {
         migrated.homepage = getUrlFromProvider(locations.ctx, locations.themeHomepage(locations.ctx, slug, parent.homepage));
     }
@@ -69,7 +70,7 @@ function migrateParent(locations: StandardLocations, slug: string, parent: Theme
  * @returns sections with reviews removed.
  */
 function migrateSections(sections: Record<string, string>): Record<string, string> {
-    const updated: Record<string, undefined | string> = { ... sections };
+    const updated: Record<string, undefined | string> = { ...sections };
     updated.reviews = undefined;
     return updated as Record<string, string>;
 }
@@ -84,11 +85,11 @@ function migrateSections(sections: Record<string, string>): Record<string, strin
 function migrateVersions(
     locations: StandardLocations,
     slug: string,
-    versions: Record<string, string>
+    versions: Record<string, string>,
 ): Record<string, string> {
     const migrated: Record<string, string> = {};
     for (const version in versions) {
-        const url = getUrlFromProvider(locations.ctx, locations.themeZip(locations.ctx, slug, version, versions[version]))
+        const url = getUrlFromProvider(locations.ctx, locations.themeZip(locations.ctx, slug, version, versions[version]));
         migrated[version] = url;
     }
     return migrated;
@@ -110,21 +111,17 @@ function getThemeMigratorProvider(
         getLiveUrlFromProvider(ctx, locations.themePreview(ctx, slug, `${url}`));
     const screenshot_url = (ctx: MigrationContext, url: unknown) =>
         getLiveUrlFromProvider(ctx, locations.themeScreenshot(ctx, slug, `${url}`));
-    const author = (_ctx: MigrationContext, author: unknown) =>
-        migrateAuthor(author);
-    const ratings = (_ctx: MigrationContext, ratings: unknown) =>
-        migrateRatings(ratings as Record<string, number>);
+    const author = (_ctx: MigrationContext, author: unknown) => migrateAuthor(author);
+    const ratings = (_ctx: MigrationContext, ratings: unknown) => migrateRatings(ratings as Record<string, number>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
-    const parent = (_ctx: MigrationContext, parent: unknown) =>
-        migrateParent(locations, slug, parent as ThemeParent);
+    const parent = (_ctx: MigrationContext, parent: unknown) => migrateParent(locations, slug, parent as ThemeParent);
     const download_link = (ctx: MigrationContext, download_link: unknown) =>
         getUrlFromProvider(ctx, locations.themeZip(ctx, slug, version, download_link as string));
     const homepage = (ctx: MigrationContext, homepage: unknown) =>
         getUrlFromProvider(ctx, locations.themeHomepage(ctx, slug, homepage as string));
     const versions = (_ctx: MigrationContext, versions: unknown) =>
         migrateVersions(locations, slug, versions as Record<string, string>);
-    const sections = (_ctx: MigrationContext, sections: unknown) =>
-        migrateSections(sections as Record<string, string>);
+    const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
     const reviews_url = (ctx: MigrationContext, reviews_url: unknown) =>
         getUrlFromProvider(ctx, locations.themeReviews(ctx, slug, reviews_url as string));
     return {
@@ -163,7 +160,7 @@ function getThemeMigrator(
         const migrated = migrateStructure(provider, locations.ctx, original);
         // FIXME: handle cross-field migration (urls in text fields)
         return migrated;
-    }
+    };
 }
 
 /**
@@ -184,7 +181,6 @@ export async function createThemeRequestGroup(
     locales: ReadonlyArray<string>,
     slug: string,
 ): Promise<RequestGroup> {
-
     // the theme list query does not return a useful timestamp, so we have to
     // download the individual theme files just to see if anything has changed.
 
@@ -194,9 +190,16 @@ export async function createThemeRequestGroup(
     if (!legacyThemeFilename.pathname || !themeFilename.pathname || !legacyThemeFilename.host) {
         throw new Deno.errors.NotSupported(`legacyThemeFilename and themeFilename must define pathnames`);
     }
-    const [ changed, themeInfo, _migratedTheme ] = await probeMetaLegacyJson(reporter, jreporter, legacyThemeFilename.host,
-        legacyThemeFilename.pathname, themeFilename.pathname, url, options.jsonSpaces,
-        getThemeMigrator(locations, slug));
+    const [changed, themeInfo, _migratedTheme] = await probeMetaLegacyJson(
+        reporter,
+        jreporter,
+        legacyThemeFilename.host,
+        legacyThemeFilename.pathname,
+        themeFilename.pathname,
+        url,
+        options.jsonSpaces,
+        getThemeMigrator(locations, slug),
+    );
 
     const group: RequestGroup = {
         sourceName: locations.ctx.sourceName,
@@ -205,7 +208,7 @@ export async function createThemeRequestGroup(
         statusFilename: locations.themeStatusFilename(locations.ctx, slug),
         requests: [],
         liveRequests: [],
-        noChanges: !changed
+        noChanges: !changed,
     };
     if (typeof themeInfo.error === 'string') {
         group.error = themeInfo.error;
@@ -282,7 +285,7 @@ async function getThemeTranslations(
     slug: string,
     version: string,
     outdated: boolean,
-    locales: ReadonlyArray<string>
+    locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
     const apiUrl = new URL(`/translations/themes/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('slug', slug);
@@ -294,15 +297,29 @@ async function getThemeTranslations(
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
     const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
-    const [ originalTranslations, migratedTranslations ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
-        legacyJson.pathname, migratedJson.pathname, apiUrl, options.force || outdated,
-        options.jsonSpaces, migrator);
+    const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
+        reporter,
+        jreporter,
+        migratedJson.host,
+        legacyJson.pathname,
+        migratedJson.pathname,
+        apiUrl,
+        options.force || outdated,
+        options.jsonSpaces,
+        migrator,
+    );
     const originals = originalTranslations as unknown as TranslationsResultV1_0;
     const migrated = migratedTranslations as unknown as TranslationsResultV1_0;
     if (locales.length > 0) {
         // we need to filter the locales to the ones that are "interesting"
-        return await filterTranslations(originals, migrated, locales,
-            legacyJson.pathname, migratedJson.pathname, options.jsonSpaces);
+        return await filterTranslations(
+            originals,
+            migrated,
+            locales,
+            legacyJson.pathname,
+            migratedJson.pathname,
+            options.jsonSpaces,
+        );
     }
     return originals;
 }
@@ -317,12 +334,12 @@ function getThemeInfoUrl(apiHost: string, name: string): URL {
     const url = new URL('/themes/info/1.2/', `https://${apiHost}`);
     url.searchParams.append('action', 'theme_information');
     url.searchParams.append('slug', name);
-    url.searchParams.append('fields[]','description');
-    url.searchParams.append('fields[]','versions');
-    url.searchParams.append('fields[]','ratings');
-    url.searchParams.append('fields[]','active_installs');
-    url.searchParams.append('fields[]','sections');
-    url.searchParams.append('fields[]','parent');
-    url.searchParams.append('fields[]','template');
+    url.searchParams.append('fields[]', 'description');
+    url.searchParams.append('fields[]', 'versions');
+    url.searchParams.append('fields[]', 'ratings');
+    url.searchParams.append('fields[]', 'active_installs');
+    url.searchParams.append('fields[]', 'sections');
+    url.searchParams.append('fields[]', 'parent');
+    url.searchParams.append('fields[]', 'template');
     return url;
 }

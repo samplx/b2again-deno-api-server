@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import * as path from "jsr:@std/path";
+import * as path from 'jsr:@std/path';
 
 /**
  * The collection of arbitrary settings that define the
@@ -37,7 +37,7 @@ export type ContentHostType = string;
  * `core` relates to the main CMS code.
  * `plugins` relates to plugins and `themes` are themes.
  */
-const ARCHIVE_GROUP_NAMES = [ 'core', 'plugins', 'themes' ] as const;
+const ARCHIVE_GROUP_NAMES = ['core', 'plugins', 'themes'] as const;
 
 /**
  * the group names as a type.
@@ -66,7 +66,7 @@ export const META_LIST_SLUG_VALUES = [
     'new',
     'popular',
     'rejected',
-    'updated'
+    'updated',
 ] as const;
 
 /**
@@ -85,7 +85,7 @@ export function isValidMetaListSlug(name: string): boolean {
 
 const META_LIST_ITEM_TYPE_NAMES = [
     'plugin',
-    'theme'
+    'theme',
 ] as const;
 
 export type MetaListItemType = typeof META_LIST_ITEM_TYPE_NAMES[number];
@@ -175,7 +175,6 @@ export interface UrlProviderResult {
     readonly is_readonly?: boolean;
 }
 
-
 /**
  * result of mapping an upstream url into the downstream
  * for a live file.
@@ -230,7 +229,7 @@ export type SimpleUrlListProvider = (ctx: MigrationContext, u: UrlProviderContex
 /**
  * how to generate a reference that depends upon a single `slug` parameter.
  */
-export type SlugUrlProvider =  (ctx: MigrationContext, slug: string) => UrlProviderResult;
+export type SlugUrlProvider = (ctx: MigrationContext, slug: string) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a `slug` and a `locale` parameter.
@@ -240,7 +239,12 @@ export type SlugLocaleUrlProvider = (ctx: MigrationContext, slug: string, locale
 /**
  * how to generate a reference that depends upon a slug, locale and version.
  */
-export type SlugLocaleVersionUrlProvider = (ctx: MigrationContext, slug: string, locale: string, version: string) => UrlProviderResult;
+export type SlugLocaleVersionUrlProvider = (
+    ctx: MigrationContext,
+    slug: string,
+    locale: string,
+    version: string,
+) => UrlProviderResult;
 
 /**
  * how to generate a reference the depends upon a slug and a version.
@@ -250,17 +254,33 @@ export type SlugVersionUrlProvider = (ctx: MigrationContext, slug: string, versi
 /**
  * how to generate a reference that depends upon a version, slug and locale.
  */
-export type VersionSlugLocaleUrlProvider = (ctx: MigrationContext, version: string, slug: string, locale: string) => UrlProviderResult;
+export type VersionSlugLocaleUrlProvider = (
+    ctx: MigrationContext,
+    version: string,
+    slug: string,
+    locale: string,
+) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a version, slug and locale version and locale.
  */
-export type VersionSlugLocaleVersionUrlProvider = (ctx: MigrationContext, version: string, slug: string, localeVersion: string, locale: string) => UrlProviderResult;
+export type VersionSlugLocaleVersionUrlProvider = (
+    ctx: MigrationContext,
+    version: string,
+    slug: string,
+    localeVersion: string,
+    locale: string,
+) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a release, locale version and locale.
  */
-export type VersionLocaleVersionUrlProvider = (ctx: MigrationContext, version: string, localeVersion: string, locale: string) => UrlProviderResult;
+export type VersionLocaleVersionUrlProvider = (
+    ctx: MigrationContext,
+    version: string,
+    localeVersion: string,
+    locale: string,
+) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a slug, and the original URL.
@@ -270,12 +290,22 @@ export type SlugOriginalUrlProvider = (ctx: MigrationContext, slug: string, orig
 /**
  * how to generate a reference that depends upon a slug, and the original URL.
  */
-export type SlugLocaleOriginalUrlProvider = (ctx: MigrationContext, slug: string, locale: string, original: string) => UrlProviderResult;
+export type SlugLocaleOriginalUrlProvider = (
+    ctx: MigrationContext,
+    slug: string,
+    locale: string,
+    original: string,
+) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a slug, a version and the original URL.
  */
-export type SlugVersionOriginalUrlProvider = (ctx: MigrationContext, slug: string, version: string, original: string) => UrlProviderResult;
+export type SlugVersionOriginalUrlProvider = (
+    ctx: MigrationContext,
+    slug: string,
+    version: string,
+    original: string,
+) => UrlProviderResult;
 
 /**
  * how to generate a reference that depends upon a slug, and the original URL.
@@ -343,8 +373,8 @@ export interface StandardLocations {
      * they are not available.
      */
     pluginSlugs: {
-        [ Property in MetaListSlug ]?: CommonUrlProvider;
-    }
+        [Property in MetaListSlug]?: CommonUrlProvider;
+    };
 
     /**
      * plugin slug list filenames. either `interesting` or
@@ -353,8 +383,8 @@ export interface StandardLocations {
      * they are not available.
      */
     themeSlugs: {
-        [ Property in MetaListSlug ]?: CommonUrlProvider;
-    }
+        [Property in MetaListSlug]?: CommonUrlProvider;
+    };
 
     /**
      * JSON filename for core release download status information.
@@ -402,9 +432,7 @@ export interface StandardLocations {
      */
     coreZips: Array<SlugUrlProvider>;
 
-    /**
-     *
-     */
+    /** */
 
     /**
      * JSON file containing summary data about plugin status.

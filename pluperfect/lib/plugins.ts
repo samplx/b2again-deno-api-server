@@ -14,14 +14,14 @@
  *  limitations under the License.
  */
 
-import { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from "../../lib/api.ts";
-import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from "../../lib/migration.ts";
-import { ConsoleReporter, JsonReporter } from "../../lib/reporter.ts";
-import { MigrationContext, StandardLocations } from "../../lib/standards.ts";
-import { migrateRatings, RequestGroup } from "../pluperfect.ts";
-import { filterTranslations, getTranslationMigration } from "../pluperfect.ts";
-import { downloadMetaLegacyJson, probeMetaLegacyJson } from "./downloads.ts";
-import { CommandOptions } from "./options.ts";
+import { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
+import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
+import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { MigrationContext, StandardLocations } from '../../lib/standards.ts';
+import { migrateRatings, RequestGroup } from '../pluperfect.ts';
+import { filterTranslations, getTranslationMigration } from '../pluperfect.ts';
+import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
+import { CommandOptions } from './options.ts';
 
 /**
  * Determine the URL to use to request plugin information.
@@ -48,7 +48,7 @@ function migrateScreenshots(
     locations: StandardLocations,
     ctx: MigrationContext,
     slug: string,
-    legacy: Record<string, ScreenshotInfo>
+    legacy: Record<string, ScreenshotInfo>,
 ): Record<string, ScreenshotInfo> {
     const updated = structuredClone(legacy);
     for (const key of Object.keys(legacy)) {
@@ -69,14 +69,14 @@ function migrateScreenshots(
 function migrateVersions(
     locations: StandardLocations,
     slug: string,
-    versions: Record<string, string>
+    versions: Record<string, string>,
 ): Record<string, string> {
     const migrated: Record<string, undefined | string> = {};
     for (const version in versions) {
         if (version === 'trunk') {
             migrated[version] = undefined;
         } else {
-            const url = getUrlFromProvider(locations.ctx, locations.pluginZip(locations.ctx, slug, version, versions[version]))
+            const url = getUrlFromProvider(locations.ctx, locations.pluginZip(locations.ctx, slug, version, versions[version]));
             migrated[version] = url;
         }
     }
@@ -141,8 +141,7 @@ function getPluginMigratorProvider(
         getLiveUrlFromProvider(ctx, locations.pluginPreview(ctx, slug, `${url}`));
     const screenshots = (ctx: MigrationContext, legacy: unknown) =>
         migrateScreenshots(locations, ctx, slug, legacy as Record<string, ScreenshotInfo>);
-    const ratings = (_ctx: MigrationContext, ratings: unknown) =>
-        migrateRatings(ratings as Record<string, number>);
+    const ratings = (_ctx: MigrationContext, ratings: unknown) => migrateRatings(ratings as Record<string, number>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
     const download_link = (ctx: MigrationContext, download_link: unknown) =>
         getUrlFromProvider(ctx, locations.pluginZip(ctx, slug, version, download_link as string));
@@ -150,8 +149,7 @@ function getPluginMigratorProvider(
         getUrlFromProvider(ctx, locations.pluginHomepage(ctx, slug, homepage as string));
     const versions = (_ctx: MigrationContext, versions: unknown) =>
         migrateVersions(locations, slug, versions as Record<string, string>);
-    const sections = (_ctx: MigrationContext, sections: unknown) =>
-        migrateSections(sections as Record<string, string>);
+    const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
     const banners = (_ctx: MigrationContext, banners: unknown) =>
         migrateBanners(locations, slug, banners as Array<unknown> | BannersInfo);
     return {
@@ -192,7 +190,7 @@ function getPluginMigrator(
         const migrated = migrateStructure(provider, locations.ctx, original);
         // FIXME: handle cross-field migration (urls in text fields)
         return migrated;
-    }
+    };
 }
 
 /**
@@ -213,16 +211,22 @@ export async function createPluginRequestGroup(
     locales: ReadonlyArray<string>,
     slug: string,
 ): Promise<RequestGroup> {
-
     const pluginFilename = locations.pluginFilename(locations.ctx, slug);
     const legacyPluginFilename = locations.legacyPluginFilename(locations.ctx, slug);
     const url = getPluginInfoUrl(locations.apiHost, slug);
     if (!legacyPluginFilename.pathname || !pluginFilename.pathname || !legacyPluginFilename.host) {
         throw new Deno.errors.NotSupported(`legacyPluginFilename and pluginFilename must define pathnames`);
     }
-    const [ changed, pluginInfo, _migratedPlugin ] = await probeMetaLegacyJson(reporter, jreporter, legacyPluginFilename.host,
-        legacyPluginFilename.pathname, pluginFilename.pathname, url, options.jsonSpaces,
-        getPluginMigrator(locations, slug));
+    const [changed, pluginInfo, _migratedPlugin] = await probeMetaLegacyJson(
+        reporter,
+        jreporter,
+        legacyPluginFilename.host,
+        legacyPluginFilename.pathname,
+        pluginFilename.pathname,
+        url,
+        options.jsonSpaces,
+        getPluginMigrator(locations, slug),
+    );
 
     const group: RequestGroup = {
         sourceName: locations.ctx.sourceName,
@@ -231,7 +235,7 @@ export async function createPluginRequestGroup(
         statusFilename: locations.pluginStatusFilename(locations.ctx, slug),
         requests: [],
         liveRequests: [],
-        noChanges: !changed
+        noChanges: !changed,
     };
     if (typeof pluginInfo.error === 'string') {
         group.error = pluginInfo.error;
@@ -253,11 +257,22 @@ export async function createPluginRequestGroup(
                 const translations = locations.pluginTranslationV1_0(locations.ctx, slug, version);
                 const legacyTranslations = locations.legacyPluginTranslationV1_0(locations.ctx, slug, version);
                 if (!legacyTranslations.pathname || !translations.pathname) {
-                    throw new Deno.errors.NotSupported(`legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`);
+                    throw new Deno.errors.NotSupported(
+                        `legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`,
+                    );
                 }
                 group.requests.push(translations, legacyTranslations);
                 const outdated = changed && ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
-                const details = await getPluginTranslations(reporter, jreporter, locations, options, slug, version, outdated, locales);
+                const details = await getPluginTranslations(
+                    reporter,
+                    jreporter,
+                    locations,
+                    options,
+                    slug,
+                    version,
+                    outdated,
+                    locales,
+                );
                 if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                     for (const item of details.translations) {
                         if (item.version === version) {
@@ -312,7 +327,7 @@ async function getPluginTranslations(
     slug: string,
     version: string,
     outdated: boolean,
-    locales: ReadonlyArray<string>
+    locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
     const apiUrl = new URL(`/translations/themes/1.0/`, `https://${locations.apiHost}/`);
     apiUrl.searchParams.append('slug', slug);
@@ -324,15 +339,29 @@ async function getPluginTranslations(
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
     const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
-    const [ originalTranslations, migratedTranslations ] = await downloadMetaLegacyJson(reporter, jreporter, migratedJson.host,
-        legacyJson.pathname, migratedJson.pathname, apiUrl, options.force || outdated,
-        options.jsonSpaces, migrator);
+    const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
+        reporter,
+        jreporter,
+        migratedJson.host,
+        legacyJson.pathname,
+        migratedJson.pathname,
+        apiUrl,
+        options.force || outdated,
+        options.jsonSpaces,
+        migrator,
+    );
     const originals = originalTranslations as unknown as TranslationsResultV1_0;
     const migrated = migratedTranslations as unknown as TranslationsResultV1_0;
     if (locales.length > 0) {
         // we need to filter the locales to the ones that are "interesting"
-        return await filterTranslations(originals, migrated, locales,
-            legacyJson.pathname, migratedJson.pathname, options.jsonSpaces);
+        return await filterTranslations(
+            originals,
+            migrated,
+            locales,
+            legacyJson.pathname,
+            migratedJson.pathname,
+            options.jsonSpaces,
+        );
     }
     return originals;
 }

@@ -14,13 +14,12 @@
  *  limitations under the License.
  */
 
-import { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from "./standards.ts";
+import { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from './standards.ts';
 
 /**
  * how to migrate an upstream resource (theme, plugin), to the
  * downstream version.
  */
-
 
 /**
  * a field level migration function. used to handle the migration of a
@@ -37,7 +36,7 @@ export type MigrationProvider<T> = (ctx: MigrationContext, upstream: unknown) =>
  */
 export type MigrationStructureProvider<Structure extends Record<string, unknown>> = {
     [Property in keyof Structure]?: MigrationProvider<Structure[Property]>;
-}
+};
 
 /**
  * Generic structure migrations. Used to migrate data from upstream
@@ -55,7 +54,7 @@ export type MigrationStructureProvider<Structure extends Record<string, unknown>
 export function migrateStructure<Structure extends Record<string, unknown>>(
     migrator: MigrationStructureProvider<Structure>,
     ctx: MigrationContext,
-    upstream: Structure
+    upstream: Structure,
 ): Structure {
     const clone = structuredClone(upstream) as Record<string, unknown>;
     for (const key of Object.keys(migrator)) {
@@ -65,7 +64,6 @@ export function migrateStructure<Structure extends Record<string, unknown>>(
     }
     return clone as Structure;
 }
-
 
 /**
  * determine the initial live url for a migration step from the
@@ -100,9 +98,8 @@ export function getUrlFromProvider(ctx: MigrationContext, p: UrlProviderResult):
         // not sure why typescript/deno complains about possible undefined object
         // so that I need to add the 'as string' part, but hey, learning is fun.
         const length = (ctx.hosts[p.host].baseDirectory as string).length;
-        const relative = p.pathname.substring(length-1);
+        const relative = p.pathname.substring(length - 1);
         return new URL(relative, ctx.hosts[p.host].baseUrl).toString();
     }
     return new URL(p.pathname, ctx.hosts[p.host].baseUrl).toString();
 }
-

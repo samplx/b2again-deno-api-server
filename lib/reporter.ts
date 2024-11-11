@@ -43,7 +43,7 @@ export function DISABLED_CONSOLE_REPORTER(_: string): void {}
  */
 export function getISOtimestamp(now: Date = new Date()): string {
     const year = now.getUTCFullYear();
-    const month = (now.getUTCMonth()+1).toString().padStart(2, '0');
+    const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
     const day = now.getUTCDate().toString().padStart(2, '0');
     const hh = now.getUTCHours().toString().padStart(2, '0');
     const mm = now.getUTCMinutes().toString().padStart(2, '0');
@@ -74,12 +74,12 @@ export function getJsonReporter(w: JsonLogWriter): JsonReporter {
         } else {
             const x = {
                 timestamp: getISOtimestamp(),
-                message: j
+                message: j,
             };
             const text = JSON.stringify(x, null, '');
             w(text);
         }
-    }
+    };
 }
 
 /**
@@ -100,4 +100,3 @@ export const ENABLED_JSON_REPORTER: JsonReporter = getJsonReporter(consoleLog);
  * @param _ignored parameter is ignored
  */
 export function DISABLED_JSON_REPORTER(_ignored: string | Record<string, unknown>): void {}
-
