@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { ArchiveGroupName, ContentHostType } from './standards.ts';
+import { ArchiveGroupName } from './standards.ts';
 
 /**
  * Classification of a download group or file.
@@ -26,13 +26,9 @@ export type ArchiveFileStatus = 'unknown' | 'complete' | 'failed' | 'uninteresti
  */
 export interface ArchiveFileSummary {
     /**
-     * which logical host has the content.
+     * combined unique name of the file resource (host:relative).
      */
-    host: ContentHostType;
-    /**
-     * relative pathname of the downloaded file.
-     */
-    filename: string;
+    key: string;
     /**
      * current status.
      */

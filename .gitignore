@@ -2,6 +2,7 @@
 .idea
 .vim
 .vscode
+.env
 
 experiment/
 

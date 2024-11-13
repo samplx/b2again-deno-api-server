@@ -1,5 +1,8 @@
 {
     "name": "@b2again/pluperfect",
     "version": "0.7.0",
-    "exports": "./mod.ts"
+    "exports": "./mod.ts",
+    "imports": {
+        "@bradenmacdonald/s3-lite-client": "jsr:@bradenmacdonald/s3-lite-client@^0.7.6"
+    }
 }

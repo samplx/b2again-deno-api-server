@@ -37,7 +37,7 @@ export type ContentHostType = string;
  * `core` relates to the main CMS code.
  * `plugins` relates to plugins and `themes` are themes.
  */
-const ARCHIVE_GROUP_NAMES = ['core', 'plugins', 'themes'] as const;
+export const ARCHIVE_GROUP_NAMES = ['core', 'plugins', 'themes'] as const;
 
 /**
  * the group names as a type.
@@ -51,6 +51,25 @@ export type ArchiveGroupName = typeof ARCHIVE_GROUP_NAMES[number];
  */
 export function isValidArchiveGroupName(name: string): boolean {
     return (ARCHIVE_GROUP_NAMES as ReadonlyArray<string>).includes(name);
+}
+
+/**
+ * names of different source repositories.
+ */
+export const ARCHIVE_SOURCE_NAMES = [ 'legacy' ] as const;
+
+/**
+ * the source names as a type.
+ */
+export type ArchiveSourceName = typeof ARCHIVE_SOURCE_NAMES[number];
+
+/**
+ * determine if the meta data group name is valid.
+ * @param name meta data group name
+ * @returns true if it is a valid name
+ */
+export function isValidArchiveSourceName(name: string): boolean {
+    return (ARCHIVE_SOURCE_NAMES as ReadonlyArray<string>).includes(name);
 }
 
 /**
@@ -118,7 +137,7 @@ export interface MigrationContext {
      * which source is active.
      * name and meaning is installation specific.
      */
-    sourceName: string;
+    sourceName: ArchiveSourceName;
 
     /**
      * map of hosts and host specific settings.
@@ -155,9 +174,9 @@ export interface UrlProviderResult {
     readonly host?: ContentHostType;
 
     /**
-     * if an actual file, the full path to it.
+     * if an actual file, the relative path to it from the base directory.
      */
-    readonly pathname?: string;
+    readonly relative?: string;
 
     /**
      * downstream version of the resource. always defined.
@@ -203,28 +222,10 @@ export interface LiveUrlProviderResult {
     readonly extension: string;
 }
 
-export interface UrlProviderContext {
-    slug?: string;
-    release?: string;
-    locale?: string;
-    localeVersion?: string;
-    original?: string;
-}
-
 /**
  * how to generate a common resource reference.
  */
 export type CommonUrlProvider = (ctx: MigrationContext) => UrlProviderResult;
-
-/**
- * generic provider based upon a bag of parameters rather than an explicit list.
- */
-export type SimpleUrlProvider = (ctx: MigrationContext, u: UrlProviderContext) => UrlProviderResult;
-
-/**
- * generic provider of a list of urls based upon a bag of parameters.
- */
-export type SimpleUrlListProvider = (ctx: MigrationContext, u: UrlProviderContext) => Array<UrlProviderResult>;
 
 /**
  * how to generate a reference that depends upon a single `slug` parameter.
@@ -345,6 +346,16 @@ export interface StandardLocations {
      * basic configuration information passed to each conversion function.
      */
     ctx: MigrationContext;
+
+    /**
+     * limit on the number of versions of a plugin to retain. 0 = no limit.
+     */
+    pluginVersionLimit: number;
+
+    /**
+     * limit on the number of version of a theme to retain. 0 = no limit.
+     */
+    themeVersionLimit: number;
 
     /**
      * JSON file containing core release lists: latest, outdated, insecure.
@@ -607,4 +618,21 @@ export function splitDirname(ctx: MigrationContext, section: ArchiveGroupName, n
         return path.join(prefix, name);
     }
     return name;
+}
+
+/**
+ * converts a provider result into a local pathname.
+ * @param ctx bag of information used to convert urls.
+ * @param provider result about a url.
+ * @returns full pathname of the resource.
+ */
+export function toPathname(ctx: MigrationContext, provider: UrlProviderResult): string {
+    if (!provider.host || !provider.relative) {
+        throw new Deno.errors.BadResource(`both host and relative must be defined`);
+    }
+    const baseDirectory = ctx.hosts[provider.host]?.baseDirectory;
+    if (!ctx.hosts[provider.host] || !baseDirectory) {
+        throw new Deno.errors.BadResource(`host ${provider.host} is not configured for output`);
+    }
+    return path.join(baseDirectory, provider.relative);
 }

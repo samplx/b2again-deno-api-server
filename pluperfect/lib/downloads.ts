@@ -20,7 +20,8 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import * as path from 'jsr:@std/path';
 import { ArchiveFileSummary } from '../../lib/archive-status.ts';
-import { ContentHostType, StandardLocations, UrlProviderResult } from '../../lib/standards.ts';
+import { ContentHostType, MigrationContext, StandardLocations, toPathname, UrlProviderResult } from '../../lib/standards.ts';
+import { getFilesKey } from '../pluperfect.ts';
 
 /**
  * A simple Either-like interface for an error (left-side) value.
@@ -37,16 +38,18 @@ export interface DownloadErrorInfo {
  */
 async function isDownloadNeeded(
     details: UrlProviderResult,
+    ctx: MigrationContext,
     force: boolean,
 ): Promise<boolean> {
-    if (!details.pathname) {
-        throw new Deno.errors.NotSupported('details.pathname must be defined');
+    if (!details.relative) {
+        throw new Deno.errors.NotSupported('details.relative must be defined');
     }
     let needed = false;
+    const pathname = toPathname(ctx, details);
     try {
-        const fileInfo = await Deno.lstat(details.pathname);
+        const fileInfo = await Deno.lstat(pathname);
         if (!fileInfo.isFile || force) {
-            await Deno.remove(details.pathname, { recursive: true });
+            await Deno.remove(pathname, { recursive: true });
             needed = true;
         }
     } catch (_) {
@@ -63,20 +66,31 @@ async function isDownloadNeeded(
  */
 async function fetchFile(
     jreporter: JsonReporter,
+    ctx: MigrationContext,
     details: UrlProviderResult,
 ): Promise<ArchiveFileSummary> {
-    if (!details.host || !details.pathname || !details.upstream) {
+    if (!details.host || !details.relative || !details.upstream) {
         throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
     }
 
-    const targetDir = path.dirname(details.pathname);
+    const pathname = toPathname(ctx, details);
+    const filesKey = getFilesKey(details.host, details.relative);
+
+    const targetDir = path.dirname(pathname);
     const when = Date.now();
     const md5hash = createHash('md5');
     const sha1hash = createHash('sha1');
     const sha256hash = createHash('sha256');
 
+    jreporter({
+        operation: 'downloadFile',
+        action: 'fetch',
+        sourceUrl: details.upstream,
+        filename: pathname,
+    });
+
     await Deno.mkdir(targetDir, { recursive: true });
-    const output = createWriteStream(details.pathname, {
+    const output = createWriteStream(pathname, {
         flags: 'wx',
         encoding: 'binary',
     });
@@ -86,13 +100,12 @@ async function fetchFile(
         jreporter({
             operation: 'downloadFile',
             action: 'fetch',
+            status: 'failed',
             sourceUrl: details.upstream,
-            filename: details.pathname,
-            error: `${response.status}`,
+            filename: pathname,
         });
         return {
-            host: details.host,
-            filename: details.pathname,
+            key: filesKey,
             status: 'failed',
             is_readonly: false,
             when,
@@ -109,11 +122,10 @@ async function fetchFile(
     const sha256 = sha256hash.digest('hex');
     output.close();
     if (details.is_readonly) {
-        await Deno.chmod(details.pathname, 0o444);
+        await Deno.chmod(pathname, 0o444);
     }
     return {
-        host: details.host,
-        filename: details.pathname,
+        key: filesKey,
         status: 'complete',
         is_readonly: !!details.is_readonly,
         when,
@@ -132,11 +144,15 @@ async function fetchFile(
  */
 async function recalculateHashes(
     jreporter: JsonReporter,
+    ctx: MigrationContext,
     details: UrlProviderResult,
 ): Promise<ArchiveFileSummary> {
-    if (!details.host || !details.pathname || !details.upstream) {
-        throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
+    if (!details.host || !details.relative || !details.upstream) {
+        throw new Deno.errors.NotSupported('upstream, host and relative must be defined');
     }
+
+    const pathname = toPathname(ctx, details);
+    const filesKey = getFilesKey(details.host, details.relative);
 
     const when = Date.now();
     const md5hash = createHash('md5');
@@ -148,13 +164,13 @@ async function recalculateHashes(
 
     try {
         return await new Promise((resolve, reject) => {
-            if (!details.host || !details.pathname || !details.upstream) {
-                throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
+            if (!details.host || !details.relative || !details.upstream) {
+                throw new Deno.errors.NotSupported('upstream, host and relative must be defined');
             }
-            const input = createReadStream(details.pathname);
+            const input = createReadStream(pathname);
             input
                 .on('end', () => {
-                    if (!details.host || !details.pathname || !details.upstream) {
+                    if (!details.host || !details.relative || !details.upstream) {
                         throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
                     }
                     sha256 = sha256hash.digest('hex');
@@ -164,13 +180,12 @@ async function recalculateHashes(
                         operation: 'downloadFile',
                         action: 'rehash',
                         sourceUrl: details.upstream,
-                        filename: details.pathname,
+                        filename: details.relative,
                     });
                     resolve({
-                        host: details.host,
-                        filename: details.pathname,
+                        key: filesKey,
                         status: 'complete',
-                        is_readonly: false,
+                        is_readonly: !!details.is_readonly,
                         when,
                         sha256,
                         md5,
@@ -185,17 +200,16 @@ async function recalculateHashes(
                 .on('error', reject);
         });
     } catch (e) {
-        console.error(`Error: ${e} unable to read file to compute hashes: ${details.pathname}`);
+        console.error(`Error: ${e} unable to read file to compute hashes: ${details.relative}`);
         jreporter({
             operation: 'downloadFile',
             action: 'rehash',
             sourceUrl: details.upstream,
-            filename: details.pathname,
+            filename: details.relative,
             error: e,
         });
         return {
-            host: details.host,
-            filename: details.pathname,
+            key: filesKey,
             status: 'failed',
             is_readonly: false,
             when,
@@ -217,53 +231,61 @@ async function recalculateHashes(
 export async function downloadFile(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
+    ctx: MigrationContext,
     details: UrlProviderResult,
     force: boolean = false,
     needHash: boolean = true,
 ): Promise<ArchiveFileSummary> {
-    if (!details.host || !details.pathname || !details.upstream) {
+    if (!details.host || !details.relative || !details.upstream) {
         throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
     }
-    const needed = await isDownloadNeeded(details, force);
+    const needed = await isDownloadNeeded(details, ctx, force);
     const when = Date.now();
+    const fileKey = getFilesKey(details.host, details.relative);
 
     if (needed) {
-        reporter(`fetch(${details.upstream}) > ${details.pathname}`);
+        reporter(`fetch(${details.upstream}) > ${details.relative}`);
 
         try {
-            return await fetchFile(jreporter, details);
+            return await fetchFile(jreporter, ctx, details);
         } catch (e) {
-            console.error(`Error: unable to save file: ${details.pathname}`);
+            console.error(`Error: unable to save file: ${details.relative}`);
             jreporter({
                 operation: 'downloadFile',
                 action: 'fetch',
                 sourceUrl: details.upstream,
-                filename: details.pathname,
+                filename: details.relative,
                 error: e,
             });
             return {
-                host: details.host,
-                filename: details.pathname,
+                key: fileKey,
                 status: 'failed',
-                is_readonly: false,
+                is_readonly: !!details.is_readonly,
                 when,
             };
         }
     }
+    if (details.is_readonly) {
+        const pathname = toPathname(ctx, details);
+        try {
+            await Deno.chmod(pathname, 0o444);
+        } catch (_) {
+            // ignore failure
+        }
+    }
     if (needHash) {
-        return await recalculateHashes(jreporter, details);
+        return await recalculateHashes(jreporter, ctx, details);
     }
     jreporter({
         operation: 'downloadFile',
         action: 'existing',
         sourceUrl: details.upstream,
-        filename: details.pathname,
+        filename: details.relative,
         needHash,
         needed,
     });
     return {
-        host: details.host,
-        filename: details.pathname,
+        key: fileKey,
         status: 'complete',
         is_readonly: !!details.is_readonly,
         when,
@@ -324,7 +346,7 @@ export async function downloadLiveFile(
         throw new Deno.errors.NotSupported(`${host} is not defined in migration context`);
     }
     const details = { host, upstream: sourceUrl.toString(), filename, url: sourceUrl };
-    const info = await downloadFile(reporter, jreporter, details, true);
+    const info = await downloadFile(reporter, jreporter, locations.ctx, details, true);
     if (middleLength === 0) {
         jreporter({ operation: 'downloadLiveFile', filename });
         return info;
@@ -332,7 +354,7 @@ export async function downloadLiveFile(
     if ((info.status === 'complete') && (typeof info.sha256 === 'string')) {
         const finalName = path.join(targetDir, liveFilename(originalName, info.sha256, middleLength));
         const updated = { ...info };
-        updated.filename = finalName;
+        updated.key = finalName;
         try {
             // a rename would keep the new file, we want to keep the old one
             await Deno.lstat(finalName);

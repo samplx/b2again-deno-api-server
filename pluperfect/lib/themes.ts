@@ -17,7 +17,7 @@
 import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from '../../lib/api.ts';
 import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
-import { MigrationContext, StandardLocations } from '../../lib/standards.ts';
+import { MigrationContext, StandardLocations, toPathname } from '../../lib/standards.ts';
 import { migrateRatings, RequestGroup } from '../pluperfect.ts';
 import { filterTranslations, getTranslationMigration } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
@@ -187,15 +187,17 @@ export async function createThemeRequestGroup(
     const themeFilename = locations.themeFilename(locations.ctx, slug);
     const legacyThemeFilename = locations.legacyThemeFilename(locations.ctx, slug);
     const url = getThemeInfoUrl(locations.apiHost, slug);
-    if (!legacyThemeFilename.pathname || !themeFilename.pathname || !legacyThemeFilename.host) {
+    if (!legacyThemeFilename.relative || !themeFilename.relative || !legacyThemeFilename.host) {
         throw new Deno.errors.NotSupported(`legacyThemeFilename and themeFilename must define pathnames`);
     }
+    const legacyJsonPathname = toPathname(locations.ctx, legacyThemeFilename);
+    const migratedJsonPathname = toPathname(locations.ctx, themeFilename);
     const [changed, themeInfo, _migratedTheme] = await probeMetaLegacyJson(
         reporter,
         jreporter,
         legacyThemeFilename.host,
-        legacyThemeFilename.pathname,
-        themeFilename.pathname,
+        legacyJsonPathname,
+        migratedJsonPathname,
         url,
         options.jsonSpaces,
         getThemeMigrator(locations, slug),
@@ -231,7 +233,7 @@ export async function createThemeRequestGroup(
             group.requests.push(locations.themeZip(locations.ctx, slug, version, themeInfo.versions[version]));
             const translations = locations.themeTranslationV1_0(locations.ctx, slug, version);
             const legacyTranslations = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
-            if (!legacyTranslations.pathname || !translations.pathname) {
+            if (!legacyTranslations.relative || !translations.relative) {
                 throw new Deno.errors.NotSupported(`legacyThemeTranslationV1_0 and themeTranslationV1_0 must define pathnames`);
             }
             group.requests.push(translations, legacyTranslations);
@@ -293,16 +295,18 @@ async function getThemeTranslations(
 
     const migratedJson = locations.themeTranslationV1_0(locations.ctx, slug, version);
     const legacyJson = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
-    if (!migratedJson.host || !migratedJson.pathname || !legacyJson.pathname) {
+    if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
+    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
     const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,
         migratedJson.host,
-        legacyJson.pathname,
-        migratedJson.pathname,
+        legacyJsonPathname,
+        migratedJsonPathname,
         apiUrl,
         options.force || outdated,
         options.jsonSpaces,
@@ -316,8 +320,8 @@ async function getThemeTranslations(
             originals,
             migrated,
             locales,
-            legacyJson.pathname,
-            migratedJson.pathname,
+            legacyJsonPathname,
+            migratedJsonPathname,
             options.jsonSpaces,
         );
     }

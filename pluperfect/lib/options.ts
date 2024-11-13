@@ -49,11 +49,6 @@ export interface CommandOptions {
     live: boolean;
 
     /**
-     * where to load standard locations.
-     */
-    locations?: string;
-
-    /**
      * number of no change items processed before we stop.
      */
     noChangeCount: string;
@@ -120,7 +115,6 @@ export function getParseOptions(): ParseOptions {
         ],
         string: [
             'jsonSpaces',
-            'locations',
             'noChangeCount',
         ],
         unknown: (arg: string): unknown => {
@@ -147,8 +141,6 @@ export function printHelp(programName: string, parseOptions: ParseOptions): void
     console.log(`    spaces used to delimit generated JSON files.`);
     console.log(`--live                     [${parseOptions.default?.live}]`);
     console.log(`    download live resources.`);
-    console.log(`--locations=name`);
-    console.log(`    file to import for getStandardLocations() function.`);
     console.log(`--noChangeCount=number     [${parseOptions.default?.noChangeCount}]`);
     console.log(`    number of items without changes before we stop the section.`);
     console.log(`--quiet                    [${parseOptions.default?.quiet}]`);

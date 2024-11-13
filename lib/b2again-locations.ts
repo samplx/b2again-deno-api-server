@@ -18,6 +18,7 @@ import * as path from 'jsr:@std/path';
 
 import {
     ArchiveGroupName,
+    ArchiveSourceName,
     CommonUrlProvider,
     ContentHostType,
     LiveUrlProviderResult,
@@ -76,14 +77,10 @@ function bindHost(
     is_readonly?: boolean,
 ): UrlProviderResult {
     const url = new URL(relative, ctx.hosts[host].baseUrl);
-    let pathname;
-    if (ctx.hosts[host].baseDirectory) {
-        pathname = path.join(ctx.hosts[host].baseDirectory, relative);
-    }
     return {
         host,
         url,
-        pathname,
+        relative,
         upstream,
         is_readonly,
     };
@@ -445,7 +442,7 @@ const DOWNLOADS_HOST = 'downloads.wordpress.org';
  * At this point, we only have one upstream source, but this may change if a
  * set of federated repositories emerge.
  */
-export default function getStandardLocations(sourceName: string = 'legacy'): StandardLocations {
+export default function getStandardLocations(sourceName: ArchiveSourceName = 'legacy'): StandardLocations {
     return {
         apiHost: 'api.wordpress.org',
         downloadsHost: DOWNLOADS_HOST,
@@ -474,6 +471,8 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             nonAsciiPrefixSuffix: '+',
             liveMiddleLength: 20,
         },
+        pluginVersionLimit: 10,
+        themeVersionLimit: 0,
         releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
         legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
         // interestingReleases -- default to all releases -- can be json w/comments or slugs
@@ -484,20 +483,20 @@ export default function getStandardLocations(sourceName: string = 'legacy'): Sta
             defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'plugins', sourceName, `featured-list.json`),
-            interesting: undefined,
+            interesting: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `interesting-list.json`),
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
-            rejected: undefined,
+            rejected: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
             updated: getCommonProvider('downloads', 'plugins', sourceName, `updated-list.json`),
         },
         themeSlugs: {
             defaults: getCommonProvider('downloads', 'themes', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'themes', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'themes', sourceName, `featured-list.json`),
-            interesting: undefined,
+            interesting: undefined, // getCommonProvider('downloads', 'themes', sourceName, `interesting-list.json`),
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
-            rejected: undefined,
+            rejected: undefined, // getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),
             updated: getCommonProvider('downloads', 'themes', sourceName, `updated-list.json`),
         },
 

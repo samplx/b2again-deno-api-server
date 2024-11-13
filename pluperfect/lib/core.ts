@@ -16,7 +16,7 @@
 import { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
 import { CommandOptions } from './options.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import { LiveUrlProviderResult, StandardLocations, UrlProviderResult } from '../../lib/standards.ts';
+import { LiveUrlProviderResult, StandardLocations, toPathname, UrlProviderResult } from '../../lib/standards.ts';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { getInterestingSlugs } from './item-lists.ts';
 import { filterTranslations, getTranslationMigration, RequestGroup } from '../pluperfect.ts';
@@ -72,15 +72,17 @@ export async function getCoreReleases(
     const apiUrl = new URL(`/core/stable-check/1.0/`, `https://${locations.apiHost}/`);
     const legacyJson = locations.legacyReleases(locations.ctx);
     const migratedJson = locations.releases(locations.ctx);
-    if (!migratedJson.host || !legacyJson.pathname || !migratedJson.pathname) {
+    if (!migratedJson.host || !legacyJson.relative || !migratedJson.relative) {
         throw new Deno.errors.NotSupported(`locations values for releases are not valid.`);
     }
+    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
     const [changed, releases, _migrated] = await probeMetaLegacyJson(
         reporter,
         jreporter,
         migratedJson.host,
-        legacyJson.pathname,
-        migratedJson.pathname,
+        legacyJsonPathname,
+        migratedJsonPathname,
         apiUrl,
         options.jsonSpaces,
         translateRelease,
@@ -105,8 +107,9 @@ export async function getListOfReleases(
     releasesMap: Record<string, ReleaseStatus>,
 ): Promise<Array<string>> {
     if (locations.interestingReleases) {
-        const { host, pathname } = locations.interestingReleases(locations.ctx);
-        if (host && pathname) {
+        const interesting = locations.interestingReleases(locations.ctx);
+        if (interesting.host && interesting.relative) {
+            const pathname = toPathname(locations.ctx, interesting);
             const slugs = await getInterestingSlugs(reporter, jreporter, pathname);
             return slugs;
         }
@@ -144,16 +147,18 @@ export async function getCoreTranslations(
     apiUrl.searchParams.append('version', release);
     const migratedJson = locations.coreTranslationV1_0(locations.ctx, release);
     const legacyJson = locations.legacyCoreTranslationV1_0(locations.ctx, release);
-    if (!migratedJson.host || !migratedJson.pathname || !legacyJson.pathname) {
+    if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
         throw new Deno.errors.NotSupported(`coreTranslationV1_0 location and legacyCoreTranslationV1_0 are misconfigured.`);
     }
     const migrator = getTranslationMigration(locations.coreL10nZip, locations.ctx, release);
+    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,
         migratedJson.host,
-        legacyJson.pathname,
-        migratedJson.pathname,
+        legacyJsonPathname,
+        migratedJsonPathname,
         apiUrl,
         options.force || outdated,
         options.jsonSpaces,
@@ -167,8 +172,8 @@ export async function getCoreTranslations(
             originals,
             migrated,
             locales,
-            legacyJson.pathname,
-            migratedJson.pathname,
+            legacyJsonPathname,
+            migratedJsonPathname,
             options.jsonSpaces,
         );
     }

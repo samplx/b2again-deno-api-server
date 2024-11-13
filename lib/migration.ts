@@ -91,15 +91,8 @@ export function getUrlFromProvider(ctx: MigrationContext, p: UrlProviderResult):
     if (!p.host || !ctx.hosts[p.host]) {
         throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
     }
-    if (!p.pathname || !ctx.hosts[p.host].baseDirectory) {
+    if (!p.relative) {
         return '';
     }
-    if (typeof ctx.hosts[p.host].baseDirectory === 'string') {
-        // not sure why typescript/deno complains about possible undefined object
-        // so that I need to add the 'as string' part, but hey, learning is fun.
-        const length = (ctx.hosts[p.host].baseDirectory as string).length;
-        const relative = p.pathname.substring(length - 1);
-        return new URL(relative, ctx.hosts[p.host].baseUrl).toString();
-    }
-    return new URL(p.pathname, ctx.hosts[p.host].baseUrl).toString();
+    return new URL(p.relative, ctx.hosts[p.host].baseUrl).toString();
 }

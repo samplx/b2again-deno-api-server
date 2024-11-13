@@ -43,6 +43,7 @@ import * as path from 'jsr:@std/path';
 import { createThemeRequestGroup } from './lib/themes.ts';
 import { createPluginRequestGroup } from './lib/plugins.ts';
 import { TranslationEntry, TranslationsResultV1_0 } from '../lib/api.ts';
+import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -239,6 +240,33 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
 }
 
 /**
+ * create a single 'key' value for file resource that could live on any host.
+ * @param host logical host name. e.g. 'downloads'
+ * @param relative relative pathname
+ * @returns key used for files[] hash
+ */
+export function getFilesKey(host: string, relative: string): string {
+    return `${host}:${relative}`;
+}
+
+/**
+ * potentially filter to the most recent versions.
+ * @param list full list of all of the versions.
+ * @param maxLength maximum number of items to include (0 == all)
+ * @returns list of recent versions.
+ */
+export function recentVersions(list: Array<string>, maxLength: number): Array<string> {
+    // some versions are not "valid" semver, so filter them out silently
+    const filtered = list.filter((v) => compareVersions.validate(v));
+    const sorted = filtered.sort(compareVersions).reverse();
+    if (maxLength > 0) {
+        return sorted.slice(0, maxLength);
+    }
+    // return the full list so we will eventually get the non semver ones.
+    return list;
+}
+
+/**
  * Attempt to download a group of files.
  * @param options command-line options.
  * @param group collection of files to be downloaded.
@@ -246,15 +274,16 @@ async function checkPermissions(locations: StandardLocations): Promise<number> {
  */
 async function downloadRequestGroup(
     options: CommandOptions,
+    locations: StandardLocations,
     group: RequestGroup,
 ): Promise<boolean> {
-    const groupStatus: ArchiveGroupStatus = await loadGroupStatus(group);
+    const groupStatus: ArchiveGroupStatus = await loadGroupStatus(locations, group);
     if (downloadIsComplete(options, group, groupStatus)) {
         jreporter({
             operation: 'downloadRequestGroup',
             section: group.section,
             slug: group.slug,
-            filename: group.statusFilename.pathname,
+            filename: group.statusFilename.relative,
             is_complete: true,
             skipped: true,
         });
@@ -263,8 +292,8 @@ async function downloadRequestGroup(
 
     let ok = true;
     const filtered = group.requests.filter((item) =>
-        item.upstream && item.pathname && item.host &&
-        (options.force || options.rehash || (groupStatus.files[item.pathname]?.status !== 'complete'))
+        item.upstream && item.relative && item.host &&
+        (options.force || options.rehash || (groupStatus.files[getFilesKey(item.host, item.relative)]?.status !== 'complete'))
     );
 
     jreporter({
@@ -275,26 +304,27 @@ async function downloadRequestGroup(
         size: filtered.length,
     });
     for (const item of filtered) {
-        if (item.upstream && item.pathname && item.host) {
+        if (item.upstream && item.relative && item.host) {
+            const key = getFilesKey(item.host, item.relative);
             // we need this one
             const needHash = options.rehash ||
-                !groupStatus.files[item.pathname] ||
-                !groupStatus.files[item.pathname].md5 ||
-                !groupStatus.files[item.pathname].sha1 ||
-                !groupStatus.files[item.pathname].sha256;
+                !groupStatus.files[key] ||
+                !groupStatus.files[key].md5 ||
+                !groupStatus.files[key].sha1 ||
+                !groupStatus.files[key].sha256;
 
-            const fileStatus = await downloadFile(reporter, jreporter, item, options.force, needHash);
-            if (groupStatus.files[item.pathname]) {
-                groupStatus.files[item.pathname].status = fileStatus.status;
-                groupStatus.files[item.pathname].when = fileStatus.when;
-                groupStatus.files[item.pathname].is_readonly = fileStatus.is_readonly;
+            const fileStatus = await downloadFile(reporter, jreporter, locations.ctx, item, options.force, needHash);
+            if (groupStatus.files[key]) {
+                groupStatus.files[key].status = fileStatus.status;
+                groupStatus.files[key].when = fileStatus.when;
+                groupStatus.files[key].is_readonly = fileStatus.is_readonly;
                 if (options.rehash) {
-                    groupStatus.files[item.pathname].md5 = fileStatus.md5;
-                    groupStatus.files[item.pathname].sha1 = fileStatus.sha1;
-                    groupStatus.files[item.pathname].sha256 = fileStatus.sha256;
+                    groupStatus.files[key].md5 = fileStatus.md5;
+                    groupStatus.files[key].sha1 = fileStatus.sha1;
+                    groupStatus.files[key].sha256 = fileStatus.sha256;
                 }
             } else {
-                groupStatus.files[item.pathname] = fileStatus;
+                groupStatus.files[key] = fileStatus;
             }
             if (fileStatus.status === 'unknown') {
                 throw new Deno.errors.BadResource(`unknown status after downloadFile`);
@@ -312,11 +342,11 @@ async function downloadRequestGroup(
         operation: 'downloadRequestGroup',
         section: group.section,
         slug: group.slug,
-        filename: group.statusFilename.pathname,
+        filename: group.statusFilename.relative,
         is_complete: ok,
         skipped: false,
     });
-    await saveGroupStatus(group, groupStatus, options.jsonSpaces);
+    await saveGroupStatus(locations, group, groupStatus, options.jsonSpaces);
 
     return groupStatus.is_complete;
 }
@@ -338,7 +368,7 @@ function downloadIsComplete(
         return false;
     }
     for (const r of group.requests) {
-        if (r.pathname && !groupStatus.files[r.pathname]) {
+        if (r.host && r.relative && !groupStatus.files[getFilesKey(r.host, r.relative)]) {
             return false;
         }
     }
@@ -351,20 +381,42 @@ function downloadIsComplete(
  * @param groupStatus results of the download effort.
  * @param jsonSpaces how to expand json. pretty or not?
  */
-async function saveGroupStatus(group: RequestGroup, groupStatus: ArchiveGroupStatus, jsonSpaces: string): Promise<void> {
-    if (!group.statusFilename.pathname) {
-        throw new Deno.errors.BadResource(`group.statusFilename.pathname must be defined`);
+async function saveGroupStatus(
+    locations: StandardLocations,
+    group: RequestGroup,
+    groupStatus: ArchiveGroupStatus,
+    jsonSpaces: string
+): Promise<void> {
+    if (!group.statusFilename.relative || !group.statusFilename.host) {
+        throw new Deno.errors.BadResource(`group.statusFilename.relative and group.statusFilename.host must be defined`);
     }
+    const baseDirectory = locations.ctx.hosts[group.statusFilename.host].baseDirectory;
+    if (!baseDirectory) {
+        throw new Deno.errors.BadResource(`group.statusFilename.host=${group.statusFilename.host} is not configured`);
+    }
+    const pathname = path.join(baseDirectory, group.statusFilename.relative);
     try {
         const json = JSON.stringify(groupStatus, null, jsonSpaces);
-        const dirname = path.dirname(group.statusFilename.pathname);
+        const dirname = path.dirname(pathname);
         await Deno.mkdir(dirname, { recursive: true });
-        await Deno.writeTextFile(group.statusFilename.pathname, json);
+        await Deno.writeTextFile(pathname, json);
     } catch (e) {
-        console.error(`Error: unable to save status: ${group.statusFilename.pathname} error: ${e}`);
-        jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, error: e });
+        console.error(`Error: unable to save status: ${pathname} error: ${e}`);
+        jreporter({ operation: 'downloadGroup', filename: pathname, error: e });
     }
-    jreporter({ operation: 'downloadGroup', filename: group.statusFilename.pathname, is_complete: groupStatus.is_complete });
+    jreporter({ operation: 'downloadGroup', filename: pathname, is_complete: groupStatus.is_complete });
+}
+
+function getLocationPathname(
+    locations: StandardLocations,
+    host: string,
+    relative: string
+): string {
+    const baseDirectory = locations.ctx.hosts[host].baseDirectory;
+    if (!baseDirectory) {
+        throw new Deno.errors.BadResource(`host=${host} is not configured`);
+    }
+    return path.join(baseDirectory, relative);
 }
 
 /**
@@ -372,7 +424,10 @@ async function saveGroupStatus(group: RequestGroup, groupStatus: ArchiveGroupSta
  * @param group collection of files to be downloaded.
  * @returns previous group status, or an empty new one.
  */
-async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus> {
+async function loadGroupStatus(
+    locations: StandardLocations,
+    group: RequestGroup
+): Promise<ArchiveGroupStatus> {
     const results: ArchiveGroupStatus = {
         source_name: group.sourceName,
         section: group.section,
@@ -381,9 +436,10 @@ async function loadGroupStatus(group: RequestGroup): Promise<ArchiveGroupStatus>
         when: Date.now(),
         files: {},
     };
-    if (group.statusFilename.pathname) {
+    if (group.statusFilename.relative && group.statusFilename.host) {
+        const pathname = getLocationPathname(locations, group.statusFilename.host, group.statusFilename.relative);
         try {
-            const contents = await Deno.readTextFile(group.statusFilename.pathname);
+            const contents = await Deno.readTextFile(pathname);
             const parsed = JSON.parse(contents);
             if (
                 parsed &&
@@ -409,8 +465,9 @@ async function getListOfLocales(
     locations: StandardLocations,
 ): Promise<Array<string>> {
     if (locations.interestingLocales) {
-        const { pathname } = locations.interestingLocales(locations.ctx);
-        if (pathname) {
+        const { host, relative } = locations.interestingLocales(locations.ctx);
+        if (host && relative) {
+            const pathname = getLocationPathname(locations, host, relative);
             return await getInterestingSlugs(reporter, jreporter, pathname);
         }
     }
@@ -440,7 +497,7 @@ async function coreSection(
     let failures = 0;
     for (const release of releases) {
         const group = await createCoreRequestGroup(reporter, jreporter, options, locations, locales, release);
-        const ok = await downloadRequestGroup(options, group);
+        const ok = await downloadRequestGroup(options, locations, group);
         if (ok) {
             successful += 1;
         } else {
@@ -471,7 +528,7 @@ async function pluginsSection(
     const slugs = getInUpdateOrder(pluginLists);
     for (const slug of slugs) {
         const group = await createPluginRequestGroup(reporter, jreporter, options, locations, locales, slug);
-        const ok = await downloadRequestGroup(options, group);
+        const ok = await downloadRequestGroup(options, locations, group);
         if (ok) {
             successful += 1;
         } else {
@@ -502,7 +559,7 @@ async function themesSection(
     const slugs = getInUpdateOrder(themeLists);
     for (const slug of slugs) {
         const group = await createThemeRequestGroup(reporter, jreporter, options, locations, locales, slug);
-        const ok = await downloadRequestGroup(options, group);
+        const ok = await downloadRequestGroup(options, locations, group);
         if (ok) {
             successful += 1;
         } else {
@@ -517,7 +574,7 @@ async function themesSection(
  * @param argv arguments passed after the `deno run -N pluperfect.ts`
  * @returns 0 if ok, 1 on error, 2 on usage errors.
  */
-async function main(argv: Array<string>): Promise<number> {
+export async function pluperfect(argv: Array<string>): Promise<number> {
     const options: CommandOptions = parseArgs(argv, parseOptions);
 
     if (options.version) {
@@ -551,5 +608,5 @@ async function main(argv: Array<string>): Promise<number> {
     return 0;
 }
 
-const exitCode: number = await main(Deno.args);
+const exitCode: number = await pluperfect(Deno.args);
 Deno.exit(exitCode);

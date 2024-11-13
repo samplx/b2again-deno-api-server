@@ -17,8 +17,8 @@
 import { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
 import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
-import { MigrationContext, StandardLocations } from '../../lib/standards.ts';
-import { migrateRatings, RequestGroup } from '../pluperfect.ts';
+import { MigrationContext, StandardLocations, toPathname } from '../../lib/standards.ts';
+import { migrateRatings, recentVersions, RequestGroup } from '../pluperfect.ts';
 import { filterTranslations, getTranslationMigration } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import { CommandOptions } from './options.ts';
@@ -33,6 +33,8 @@ function getPluginInfoUrl(apiHost: string, name: string): URL {
     const url = new URL('/plugins/info/1.2/', `https://${apiHost}`);
     url.searchParams.append('action', 'plugin_information');
     url.searchParams.append('slug', name);
+    url.searchParams.append('fields[]', 'short_description');
+    url.searchParams.append('fields[]', 'icons');
     return url;
 }
 
@@ -147,6 +149,8 @@ function getPluginMigratorProvider(
         getUrlFromProvider(ctx, locations.pluginZip(ctx, slug, version, download_link as string));
     const homepage = (ctx: MigrationContext, homepage: unknown) =>
         getUrlFromProvider(ctx, locations.pluginHomepage(ctx, slug, homepage as string));
+    const support_url = (ctx: MigrationContext, support_url: unknown) =>
+        getUrlFromProvider(ctx, locations.pluginSupport(ctx, slug, support_url as string));
     const versions = (_ctx: MigrationContext, versions: unknown) =>
         migrateVersions(locations, slug, versions as Record<string, string>);
     const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
@@ -166,6 +170,7 @@ function getPluginMigratorProvider(
         versions,
         banners,
         preview_link,
+        support_url,
     };
 }
 
@@ -214,15 +219,18 @@ export async function createPluginRequestGroup(
     const pluginFilename = locations.pluginFilename(locations.ctx, slug);
     const legacyPluginFilename = locations.legacyPluginFilename(locations.ctx, slug);
     const url = getPluginInfoUrl(locations.apiHost, slug);
-    if (!legacyPluginFilename.pathname || !pluginFilename.pathname || !legacyPluginFilename.host) {
+    if (!legacyPluginFilename.relative || !pluginFilename.relative || !legacyPluginFilename.host) {
         throw new Deno.errors.NotSupported(`legacyPluginFilename and pluginFilename must define pathnames`);
     }
+
+    const legacyJsonPathname = toPathname(locations.ctx, legacyPluginFilename);
+    const migratedJsonPathname = toPathname(locations.ctx, pluginFilename);
     const [changed, pluginInfo, _migratedPlugin] = await probeMetaLegacyJson(
         reporter,
         jreporter,
         legacyPluginFilename.host,
-        legacyPluginFilename.pathname,
-        pluginFilename.pathname,
+        legacyJsonPathname,
+        migratedJsonPathname,
         url,
         options.jsonSpaces,
         getPluginMigrator(locations, slug),
@@ -251,33 +259,40 @@ export async function createPluginRequestGroup(
     }
 
     if (pluginInfo.versions) {
-        for (const version in pluginInfo.versions) {
+        const all: Array<string> = [];
+        for (const version of Object.keys(pluginInfo.versions)) {
             if ((version !== 'trunk') && pluginInfo.versions[version]) {
+                all.push(version);
+            }
+        }
+        const recent = recentVersions(all, locations.pluginVersionLimit);
+        for (const version of recent) {
+            if (pluginInfo.versions[version]) {
                 group.requests.push(locations.pluginZip(locations.ctx, slug, version, pluginInfo.versions[version]));
-                const translations = locations.pluginTranslationV1_0(locations.ctx, slug, version);
-                const legacyTranslations = locations.legacyPluginTranslationV1_0(locations.ctx, slug, version);
-                if (!legacyTranslations.pathname || !translations.pathname) {
-                    throw new Deno.errors.NotSupported(
-                        `legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`,
-                    );
-                }
-                group.requests.push(translations, legacyTranslations);
-                const outdated = changed && ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
-                const details = await getPluginTranslations(
-                    reporter,
-                    jreporter,
-                    locations,
-                    options,
-                    slug,
-                    version,
-                    outdated,
-                    locales,
+            }
+            const translations = locations.pluginTranslationV1_0(locations.ctx, slug, version);
+            const legacyTranslations = locations.legacyPluginTranslationV1_0(locations.ctx, slug, version);
+            if (!legacyTranslations.relative || !translations.relative) {
+                throw new Deno.errors.NotSupported(
+                    `legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`,
                 );
-                if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
-                    for (const item of details.translations) {
-                        if (item.version === version) {
-                            group.requests.push(locations.pluginL10nZip(locations.ctx, slug, version, item.language));
-                        }
+            }
+            group.requests.push(translations, legacyTranslations);
+            const outdated = changed && ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
+            const details = await getPluginTranslations(
+                reporter,
+                jreporter,
+                locations,
+                options,
+                slug,
+                version,
+                outdated,
+                locales,
+            );
+            if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
+                for (const item of details.translations) {
+                    if (item.version === version) {
+                        group.requests.push(locations.pluginL10nZip(locations.ctx, slug, version, item.language));
                     }
                 }
             }
@@ -335,16 +350,19 @@ async function getPluginTranslations(
 
     const migratedJson = locations.themeTranslationV1_0(locations.ctx, slug, version);
     const legacyJson = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
-    if (!migratedJson.host || !migratedJson.pathname || !legacyJson.pathname) {
+    if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
+    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
+
     const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,
         migratedJson.host,
-        legacyJson.pathname,
-        migratedJson.pathname,
+        legacyJsonPathname,
+        migratedJsonPathname,
         apiUrl,
         options.force || outdated,
         options.jsonSpaces,
@@ -358,8 +376,8 @@ async function getPluginTranslations(
             originals,
             migrated,
             locales,
-            legacyJson.pathname,
-            migratedJson.pathname,
+            legacyJsonPathname,
+            migratedJsonPathname,
             options.jsonSpaces,
         );
     }
