@@ -17,9 +17,8 @@
 import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from '../../lib/api.ts';
 import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
-import { MigrationContext, StandardLocations, toPathname } from '../../lib/standards.ts';
-import { migrateRatings, RequestGroup } from '../pluperfect.ts';
-import { filterTranslations, getTranslationMigration } from '../pluperfect.ts';
+import { MigrationContext, StandardConventions, toPathname } from '../../lib/standards.ts';
+import { migrateRatings, recentVersions, RequestGroup, filterTranslations, getTranslationMigration } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import { CommandOptions } from './options.ts';
 
@@ -51,15 +50,15 @@ function migrateAuthor(author: unknown): string | ThemeAuthor {
 
 /**
  * migrate parent theme information (homepage).
- * @param locations how to find resources.
+ * @param conventions how to find resources.
  * @param slug theme slug.
  * @param parent upstream information about the parent theme.
  * @returns migrated information about the parent theme.
  */
-function migrateParent(locations: StandardLocations, slug: string, parent: ThemeParent): ThemeParent {
+function migrateParent(conventions: StandardConventions, slug: string, parent: ThemeParent): ThemeParent {
     const migrated = { ...parent };
     if (parent.homepage) {
-        migrated.homepage = getUrlFromProvider(locations.ctx, locations.themeHomepage(locations.ctx, slug, parent.homepage));
+        migrated.homepage = getUrlFromProvider(conventions.ctx, conventions.themeHomepage(conventions.ctx, slug, parent.homepage));
     }
     return parent;
 }
@@ -77,19 +76,19 @@ function migrateSections(sections: Record<string, string>): Record<string, strin
 
 /**
  * convert the versions map to downstream.
- * @param locations how to locate resources.
+ * @param conventions how to locate resources.
  * @param slug theme id.
  * @param versions upstream map of version/urls.
  * @returns map of version/url with local url resources.
  */
 function migrateVersions(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
     versions: Record<string, string>,
 ): Record<string, string> {
     const migrated: Record<string, string> = {};
     for (const version in versions) {
-        const url = getUrlFromProvider(locations.ctx, locations.themeZip(locations.ctx, slug, version, versions[version]));
+        const url = getUrlFromProvider(conventions.ctx, conventions.themeZip(conventions.ctx, slug, version, versions[version]));
         migrated[version] = url;
     }
     return migrated;
@@ -97,33 +96,33 @@ function migrateVersions(
 
 /**
  * build a migrator provider for a theme id and version.
- * @param locations how to locate resources.
+ * @param conventions how to locate resources.
  * @param slug theme id.
  * @param version theme version id.
  * @returns a migration structure provider that will help migrate the structure.
  */
 function getThemeMigratorProvider(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
     version: string,
 ): MigrationStructureProvider<ThemeDetails> {
     const preview_url = (ctx: MigrationContext, url: unknown) =>
-        getLiveUrlFromProvider(ctx, locations.themePreview(ctx, slug, `${url}`));
+        getLiveUrlFromProvider(ctx, conventions.themePreview(ctx, slug, `${url}`));
     const screenshot_url = (ctx: MigrationContext, url: unknown) =>
-        getLiveUrlFromProvider(ctx, locations.themeScreenshot(ctx, slug, `${url}`));
+        getLiveUrlFromProvider(ctx, conventions.themeScreenshot(ctx, slug, `${url}`));
     const author = (_ctx: MigrationContext, author: unknown) => migrateAuthor(author);
     const ratings = (_ctx: MigrationContext, ratings: unknown) => migrateRatings(ratings as Record<string, number>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
-    const parent = (_ctx: MigrationContext, parent: unknown) => migrateParent(locations, slug, parent as ThemeParent);
+    const parent = (_ctx: MigrationContext, parent: unknown) => migrateParent(conventions, slug, parent as ThemeParent);
     const download_link = (ctx: MigrationContext, download_link: unknown) =>
-        getUrlFromProvider(ctx, locations.themeZip(ctx, slug, version, download_link as string));
+        getUrlFromProvider(ctx, conventions.themeZip(ctx, slug, version, download_link as string));
     const homepage = (ctx: MigrationContext, homepage: unknown) =>
-        getUrlFromProvider(ctx, locations.themeHomepage(ctx, slug, homepage as string));
+        getUrlFromProvider(ctx, conventions.themeHomepage(ctx, slug, homepage as string));
     const versions = (_ctx: MigrationContext, versions: unknown) =>
-        migrateVersions(locations, slug, versions as Record<string, string>);
+        migrateVersions(conventions, slug, versions as Record<string, string>);
     const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
     const reviews_url = (ctx: MigrationContext, reviews_url: unknown) =>
-        getUrlFromProvider(ctx, locations.themeReviews(ctx, slug, reviews_url as string));
+        getUrlFromProvider(ctx, conventions.themeReviews(ctx, slug, reviews_url as string));
     return {
         preview_url,
         author,
@@ -144,20 +143,20 @@ function getThemeMigratorProvider(
 
 /**
  * create migration higher-order function.
- * @param locations host to locale resources.
+ * @param conventions host to locale resources.
  * @param slug theme id.
  * @returns a function that migrates an upstream theme to the downstream version.
  */
 function getThemeMigrator(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
 ): (original: ThemeDetails) => ThemeDetails {
     return function (original: ThemeDetails): ThemeDetails {
         if (!original.version) {
             throw new Deno.errors.NotSupported(`theme.version is not defined`);
         }
-        const provider = getThemeMigratorProvider(locations, slug, original.version);
-        const migrated = migrateStructure(provider, locations.ctx, original);
+        const provider = getThemeMigratorProvider(conventions, slug, original.version);
+        const migrated = migrateStructure(provider, conventions.ctx, original);
         // FIXME: handle cross-field migration (urls in text fields)
         return migrated;
     };
@@ -169,7 +168,7 @@ function getThemeMigrator(
  * @param jreporter JSON structured logger.
  * @param host host where the files live.
  * @param options command-line options.
- * @param locations how to access resources.
+ * @param conventions how to access resources.
  * @param slug theme slug.
  * @returns
  */
@@ -177,21 +176,21 @@ export async function createThemeRequestGroup(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     locales: ReadonlyArray<string>,
     slug: string,
 ): Promise<RequestGroup> {
     // the theme list query does not return a useful timestamp, so we have to
     // download the individual theme files just to see if anything has changed.
 
-    const themeFilename = locations.themeFilename(locations.ctx, slug);
-    const legacyThemeFilename = locations.legacyThemeFilename(locations.ctx, slug);
-    const url = getThemeInfoUrl(locations.apiHost, slug);
+    const themeFilename = conventions.themeFilename(conventions.ctx, slug);
+    const legacyThemeFilename = conventions.legacyThemeFilename(conventions.ctx, slug);
+    const url = getThemeInfoUrl(conventions.apiHost, slug);
     if (!legacyThemeFilename.relative || !themeFilename.relative || !legacyThemeFilename.host) {
         throw new Deno.errors.NotSupported(`legacyThemeFilename and themeFilename must define pathnames`);
     }
-    const legacyJsonPathname = toPathname(locations.ctx, legacyThemeFilename);
-    const migratedJsonPathname = toPathname(locations.ctx, themeFilename);
+    const legacyJsonPathname = toPathname(conventions.ctx, legacyThemeFilename);
+    const migratedJsonPathname = toPathname(conventions.ctx, themeFilename);
     const [changed, themeInfo, _migratedTheme] = await probeMetaLegacyJson(
         reporter,
         jreporter,
@@ -200,14 +199,14 @@ export async function createThemeRequestGroup(
         migratedJsonPathname,
         url,
         options.jsonSpaces,
-        getThemeMigrator(locations, slug),
+        getThemeMigrator(conventions, slug),
     );
 
     const group: RequestGroup = {
-        sourceName: locations.ctx.sourceName,
+        sourceName: conventions.ctx.sourceName,
         section: 'themes',
         slug: slug,
-        statusFilename: locations.themeStatusFilename(locations.ctx, slug),
+        statusFilename: conventions.themeStatusFilename(conventions.ctx, slug),
         requests: [],
         liveRequests: [],
         noChanges: !changed,
@@ -226,13 +225,17 @@ export async function createThemeRequestGroup(
     }
 
     if (themeInfo.versions) {
-        for (const version in themeInfo.versions) {
-            if (version === 'trunk') {
-                continue;
+        const all: Array<string> = [];
+        for (const version of Object.keys(themeInfo.versions)) {
+            if ((version !== 'trunk') && themeInfo.versions[version]) {
+                all.push(version);
             }
-            group.requests.push(locations.themeZip(locations.ctx, slug, version, themeInfo.versions[version]));
-            const translations = locations.themeTranslationV1_0(locations.ctx, slug, version);
-            const legacyTranslations = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
+        }
+        const recent = recentVersions(all, conventions.themeVersionLimit);
+        for (const version of recent) {
+            group.requests.push(conventions.themeZip(conventions.ctx, slug, version, themeInfo.versions[version]));
+            const translations = conventions.themeTranslationV1_0(conventions.ctx, slug, version);
+            const legacyTranslations = conventions.legacyThemeTranslationV1_0(conventions.ctx, slug, version);
             if (!legacyTranslations.relative || !translations.relative) {
                 throw new Deno.errors.NotSupported(`legacyThemeTranslationV1_0 and themeTranslationV1_0 must define pathnames`);
             }
@@ -240,27 +243,27 @@ export async function createThemeRequestGroup(
             // since themes timestamps are largely absent, we always reload the current version's translations
             // unless the theme.json file did not change at all.
             const outdated = changed && ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
-            const details = await getThemeTranslations(reporter, jreporter, locations, options, slug, version, outdated, locales);
+            const details = await getThemeTranslations(reporter, jreporter, conventions, options, slug, version, outdated, locales);
             if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                 for (const item of details.translations) {
                     if (item.version === version) {
-                        group.requests.push(locations.themeL10nZip(locations.ctx, slug, version, item.language));
+                        group.requests.push(conventions.themeL10nZip(conventions.ctx, slug, version, item.language));
                     }
                 }
             }
         }
     } else if (themeInfo.version && themeInfo.download_link) {
-        group.requests.push(locations.themeZip(locations.ctx, slug, themeInfo.version, themeInfo.download_link));
+        group.requests.push(conventions.themeZip(conventions.ctx, slug, themeInfo.version, themeInfo.download_link));
     }
     if (themeInfo.preview_url) {
-        group.liveRequests.push(locations.themePreview(locations.ctx, slug, themeInfo.preview_url));
+        group.liveRequests.push(conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url));
     }
     if (themeInfo.screenshot_url) {
         // some ts.w.org URL's don't have a scheme?
         if (themeInfo.screenshot_url.startsWith('//')) {
-            group.liveRequests.push(locations.themeScreenshot(locations.ctx, slug, `https:${themeInfo.screenshot_url}`));
+            group.liveRequests.push(conventions.themeScreenshot(conventions.ctx, slug, `https:${themeInfo.screenshot_url}`));
         } else {
-            group.liveRequests.push(locations.themeScreenshot(locations.ctx, slug, themeInfo.screenshot_url));
+            group.liveRequests.push(conventions.themeScreenshot(conventions.ctx, slug, themeInfo.screenshot_url));
         }
     }
 
@@ -271,7 +274,7 @@ export async function createThemeRequestGroup(
  * handle loading the themes translations.
  * @param reporter how to report non-error text.
  * @param jreporter how to report structured JSON.
- * @param locations how to locale resources.
+ * @param conventions how to locale resources.
  * @param options command-line options.
  * @param slug theme id.
  * @param version theme version id.
@@ -282,25 +285,25 @@ export async function createThemeRequestGroup(
 async function getThemeTranslations(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     options: CommandOptions,
     slug: string,
     version: string,
     outdated: boolean,
     locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
-    const apiUrl = new URL(`/translations/themes/1.0/`, `https://${locations.apiHost}/`);
+    const apiUrl = new URL(`/translations/themes/1.0/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('slug', slug);
     apiUrl.searchParams.append('version', version);
 
-    const migratedJson = locations.themeTranslationV1_0(locations.ctx, slug, version);
-    const legacyJson = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
+    const migratedJson = conventions.themeTranslationV1_0(conventions.ctx, slug, version);
+    const legacyJson = conventions.legacyThemeTranslationV1_0(conventions.ctx, slug, version);
     if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
-    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
-    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
-    const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
+    const legacyJsonPathname = toPathname(conventions.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(conventions.ctx, migratedJson);
+    const migrator = getTranslationMigration(conventions.themeL10nZip, conventions.ctx, slug);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,

@@ -17,9 +17,8 @@
 import { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
 import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
-import { MigrationContext, StandardLocations, toPathname } from '../../lib/standards.ts';
-import { migrateRatings, recentVersions, RequestGroup } from '../pluperfect.ts';
-import { filterTranslations, getTranslationMigration } from '../pluperfect.ts';
+import { MigrationContext, StandardConventions, toPathname } from '../../lib/standards.ts';
+import { migrateRatings, recentVersions, RequestGroup, filterTranslations, getTranslationMigration } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import { CommandOptions } from './options.ts';
 
@@ -40,14 +39,14 @@ function getPluginInfoUrl(apiHost: string, name: string): URL {
 
 /**
  * migrate the src portion of the screenshots.
- * @param locations how to find resources.
+ * @param conventions how to find resources.
  * @param ctx bag of information to convert urls.
  * @param slug plugin id.
  * @param legacy upstream version of the data.
  * @returns migrated version with URL for local resources.
  */
 function migrateScreenshots(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     ctx: MigrationContext,
     slug: string,
     legacy: Record<string, ScreenshotInfo>,
@@ -55,7 +54,7 @@ function migrateScreenshots(
     const updated = structuredClone(legacy);
     for (const key of Object.keys(legacy)) {
         if (updated[key] && (typeof updated[key].src === 'string')) {
-            updated[key].src = getLiveUrlFromProvider(ctx, locations.pluginScreenshot(ctx, slug, updated[key].src));
+            updated[key].src = getLiveUrlFromProvider(ctx, conventions.pluginScreenshot(ctx, slug, updated[key].src));
         }
     }
     return updated;
@@ -63,13 +62,13 @@ function migrateScreenshots(
 
 /**
  * migrate the map of version urls.
- * @param locations how to find resources.
+ * @param conventions how to find resources.
  * @param slug plugin id.
  * @param versions upstream map of resources.
  * @returns migrated map of version/url pairs.
  */
 function migrateVersions(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
     versions: Record<string, string>,
 ): Record<string, string> {
@@ -78,7 +77,7 @@ function migrateVersions(
         if (version === 'trunk') {
             migrated[version] = undefined;
         } else {
-            const url = getUrlFromProvider(locations.ctx, locations.pluginZip(locations.ctx, slug, version, versions[version]));
+            const url = getUrlFromProvider(conventions.ctx, conventions.pluginZip(conventions.ctx, slug, version, versions[version]));
             migrated[version] = url;
         }
     }
@@ -90,13 +89,13 @@ function migrateVersions(
  * PHP JSON serialization process, an "empty" field is not null,
  * but an empty array. if it is empty, we leave it alone, otherwise
  * we convert the high and low fields if they exist.
- * @param locations how to find resources.
+ * @param conventions how to find resources.
  * @param slug plugin id.
  * @param original upstream banner resources.
  * @returns migrated banner resources.
  */
 function migrateBanners(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
     original: Array<unknown> | BannersInfo,
 ): Array<unknown> | BannersInfo {
@@ -106,10 +105,10 @@ function migrateBanners(
     let high;
     let low;
     if (typeof original.high === 'string') {
-        high = getLiveUrlFromProvider(locations.ctx, locations.pluginBanner(locations.ctx, slug, original.high));
+        high = getLiveUrlFromProvider(conventions.ctx, conventions.pluginBanner(conventions.ctx, slug, original.high));
     }
     if (typeof original.low === 'string') {
-        low = getLiveUrlFromProvider(locations.ctx, locations.pluginBanner(locations.ctx, slug, original.low));
+        low = getLiveUrlFromProvider(conventions.ctx, conventions.pluginBanner(conventions.ctx, slug, original.low));
     }
     return { high, low };
 }
@@ -129,33 +128,33 @@ function migrateSections(sections: Record<string, string>): Record<string, strin
 /**
  * build the thing to do the migration. this builds the migrator, the actual
  * migration is done later.
- * @param locations how to access resources.
+ * @param conventions how to access resources.
  * @param slug plugin id.
  * @param version plugin version id.
  * @returns a migration structure provider that is used to migrate the plugin.
  */
 function getPluginMigratorProvider(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
     version: string,
 ): MigrationStructureProvider<PluginDetails> {
     const preview_link = (ctx: MigrationContext, url: unknown) =>
-        getLiveUrlFromProvider(ctx, locations.pluginPreview(ctx, slug, `${url}`));
+        getLiveUrlFromProvider(ctx, conventions.pluginPreview(ctx, slug, `${url}`));
     const screenshots = (ctx: MigrationContext, legacy: unknown) =>
-        migrateScreenshots(locations, ctx, slug, legacy as Record<string, ScreenshotInfo>);
+        migrateScreenshots(conventions, ctx, slug, legacy as Record<string, ScreenshotInfo>);
     const ratings = (_ctx: MigrationContext, ratings: unknown) => migrateRatings(ratings as Record<string, number>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
     const download_link = (ctx: MigrationContext, download_link: unknown) =>
-        getUrlFromProvider(ctx, locations.pluginZip(ctx, slug, version, download_link as string));
+        getUrlFromProvider(ctx, conventions.pluginZip(ctx, slug, version, download_link as string));
     const homepage = (ctx: MigrationContext, homepage: unknown) =>
-        getUrlFromProvider(ctx, locations.pluginHomepage(ctx, slug, homepage as string));
+        getUrlFromProvider(ctx, conventions.pluginHomepage(ctx, slug, homepage as string));
     const support_url = (ctx: MigrationContext, support_url: unknown) =>
-        getUrlFromProvider(ctx, locations.pluginSupport(ctx, slug, support_url as string));
+        getUrlFromProvider(ctx, conventions.pluginSupport(ctx, slug, support_url as string));
     const versions = (_ctx: MigrationContext, versions: unknown) =>
-        migrateVersions(locations, slug, versions as Record<string, string>);
+        migrateVersions(conventions, slug, versions as Record<string, string>);
     const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
     const banners = (_ctx: MigrationContext, banners: unknown) =>
-        migrateBanners(locations, slug, banners as Array<unknown> | BannersInfo);
+        migrateBanners(conventions, slug, banners as Array<unknown> | BannersInfo);
     return {
         ratings,
         rating: zero,
@@ -179,20 +178,20 @@ function getPluginMigratorProvider(
  * is done field by field using the MigrationStructureProvider and migrateStructue.
  * there is also cross-field migration to update upstream URL's embedded in text
  * inside of the sections fields.
- * @param locations host to access resources.
+ * @param conventions host to access resources.
  * @param slug plugin id.
  * @returns a migrator object that describes how to migrate the structure.
  */
 function getPluginMigrator(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     slug: string,
 ): (original: PluginDetails) => PluginDetails {
     return function (original: PluginDetails): PluginDetails {
         if (!original.version) {
             throw new Deno.errors.NotSupported(`theme.version is not defined`);
         }
-        const provider = getPluginMigratorProvider(locations, slug, original.version);
-        const migrated = migrateStructure(provider, locations.ctx, original);
+        const provider = getPluginMigratorProvider(conventions, slug, original.version);
+        const migrated = migrateStructure(provider, conventions.ctx, original);
         // FIXME: handle cross-field migration (urls in text fields)
         return migrated;
     };
@@ -204,7 +203,7 @@ function getPluginMigrator(
  * @param jreporter JSON structured logger.
  * @param host host where the files live.
  * @param options command-line options.
- * @param locations how to access resources.
+ * @param conventions how to access resources.
  * @param slug plugin slug.
  * @returns
  */
@@ -212,19 +211,19 @@ export async function createPluginRequestGroup(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     locales: ReadonlyArray<string>,
     slug: string,
 ): Promise<RequestGroup> {
-    const pluginFilename = locations.pluginFilename(locations.ctx, slug);
-    const legacyPluginFilename = locations.legacyPluginFilename(locations.ctx, slug);
-    const url = getPluginInfoUrl(locations.apiHost, slug);
+    const pluginFilename = conventions.pluginFilename(conventions.ctx, slug);
+    const legacyPluginFilename = conventions.legacyPluginFilename(conventions.ctx, slug);
+    const url = getPluginInfoUrl(conventions.apiHost, slug);
     if (!legacyPluginFilename.relative || !pluginFilename.relative || !legacyPluginFilename.host) {
         throw new Deno.errors.NotSupported(`legacyPluginFilename and pluginFilename must define pathnames`);
     }
 
-    const legacyJsonPathname = toPathname(locations.ctx, legacyPluginFilename);
-    const migratedJsonPathname = toPathname(locations.ctx, pluginFilename);
+    const legacyJsonPathname = toPathname(conventions.ctx, legacyPluginFilename);
+    const migratedJsonPathname = toPathname(conventions.ctx, pluginFilename);
     const [changed, pluginInfo, _migratedPlugin] = await probeMetaLegacyJson(
         reporter,
         jreporter,
@@ -233,14 +232,14 @@ export async function createPluginRequestGroup(
         migratedJsonPathname,
         url,
         options.jsonSpaces,
-        getPluginMigrator(locations, slug),
+        getPluginMigrator(conventions, slug),
     );
 
     const group: RequestGroup = {
-        sourceName: locations.ctx.sourceName,
+        sourceName: conventions.ctx.sourceName,
         section: 'plugins',
         slug: slug,
-        statusFilename: locations.pluginStatusFilename(locations.ctx, slug),
+        statusFilename: conventions.pluginStatusFilename(conventions.ctx, slug),
         requests: [],
         liveRequests: [],
         noChanges: !changed,
@@ -265,13 +264,13 @@ export async function createPluginRequestGroup(
                 all.push(version);
             }
         }
-        const recent = recentVersions(all, locations.pluginVersionLimit);
+        const recent = recentVersions(all, conventions.pluginVersionLimit);
         for (const version of recent) {
             if (pluginInfo.versions[version]) {
-                group.requests.push(locations.pluginZip(locations.ctx, slug, version, pluginInfo.versions[version]));
+                group.requests.push(conventions.pluginZip(conventions.ctx, slug, version, pluginInfo.versions[version]));
             }
-            const translations = locations.pluginTranslationV1_0(locations.ctx, slug, version);
-            const legacyTranslations = locations.legacyPluginTranslationV1_0(locations.ctx, slug, version);
+            const translations = conventions.pluginTranslationV1_0(conventions.ctx, slug, version);
+            const legacyTranslations = conventions.legacyPluginTranslationV1_0(conventions.ctx, slug, version);
             if (!legacyTranslations.relative || !translations.relative) {
                 throw new Deno.errors.NotSupported(
                     `legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`,
@@ -282,7 +281,7 @@ export async function createPluginRequestGroup(
             const details = await getPluginTranslations(
                 reporter,
                 jreporter,
-                locations,
+                conventions,
                 options,
                 slug,
                 version,
@@ -292,30 +291,30 @@ export async function createPluginRequestGroup(
             if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                 for (const item of details.translations) {
                     if (item.version === version) {
-                        group.requests.push(locations.pluginL10nZip(locations.ctx, slug, version, item.language));
+                        group.requests.push(conventions.pluginL10nZip(conventions.ctx, slug, version, item.language));
                     }
                 }
             }
         }
     } else if (pluginInfo.version && pluginInfo.download_link) {
-        group.requests.push(locations.pluginZip(locations.ctx, slug, pluginInfo.version, pluginInfo.download_link));
+        group.requests.push(conventions.pluginZip(conventions.ctx, slug, pluginInfo.version, pluginInfo.download_link));
     }
     if (pluginInfo.preview_link) {
-        group.liveRequests.push(locations.pluginPreview(locations.ctx, slug, pluginInfo.preview_link));
+        group.liveRequests.push(conventions.pluginPreview(conventions.ctx, slug, pluginInfo.preview_link));
     }
     if (Array.isArray(pluginInfo.screenshots)) {
         for (const n in pluginInfo.screenshots) {
             if (pluginInfo.screenshots[n].src) {
-                group.liveRequests.push(locations.pluginScreenshot(locations.ctx, slug, pluginInfo.screenshots[n].src));
+                group.liveRequests.push(conventions.pluginScreenshot(conventions.ctx, slug, pluginInfo.screenshots[n].src));
             }
         }
     }
     if (pluginInfo.banners && !Array.isArray(pluginInfo.banners)) {
         if (typeof pluginInfo.banners.high === 'string') {
-            group.liveRequests.push(locations.pluginBanner(locations.ctx, slug, pluginInfo.banners.high));
+            group.liveRequests.push(conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.high));
         }
         if (typeof pluginInfo.banners.low === 'string') {
-            group.liveRequests.push(locations.pluginBanner(locations.ctx, slug, pluginInfo.banners.low));
+            group.liveRequests.push(conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.low));
         }
     }
 
@@ -326,7 +325,7 @@ export async function createPluginRequestGroup(
  * determine which translations are available for a plugin version.
  * @param reporter how to report non-error text.
  * @param jreporter how to report structured JSON.
- * @param locations how to find resources.
+ * @param conventions how to find resources.
  * @param options command-line options.
  * @param slug plugin id.
  * @param version plugin version id.
@@ -337,26 +336,26 @@ export async function createPluginRequestGroup(
 async function getPluginTranslations(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     options: CommandOptions,
     slug: string,
     version: string,
     outdated: boolean,
     locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
-    const apiUrl = new URL(`/translations/themes/1.0/`, `https://${locations.apiHost}/`);
+    const apiUrl = new URL(`/translations/themes/1.0/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('slug', slug);
     apiUrl.searchParams.append('version', version);
 
-    const migratedJson = locations.themeTranslationV1_0(locations.ctx, slug, version);
-    const legacyJson = locations.legacyThemeTranslationV1_0(locations.ctx, slug, version);
+    const migratedJson = conventions.themeTranslationV1_0(conventions.ctx, slug, version);
+    const legacyJson = conventions.legacyThemeTranslationV1_0(conventions.ctx, slug, version);
     if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
         throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
     }
-    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
-    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
+    const legacyJsonPathname = toPathname(conventions.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(conventions.ctx, migratedJson);
 
-    const migrator = getTranslationMigration(locations.themeL10nZip, locations.ctx, slug);
+    const migrator = getTranslationMigration(conventions.themeL10nZip, conventions.ctx, slug);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,

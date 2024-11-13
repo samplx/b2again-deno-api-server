@@ -16,7 +16,7 @@
 import { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
 import { CommandOptions } from './options.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import { LiveUrlProviderResult, StandardLocations, toPathname, UrlProviderResult } from '../../lib/standards.ts';
+import { LiveUrlProviderResult, StandardConventions, toPathname, UrlProviderResult } from '../../lib/standards.ts';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { getInterestingSlugs } from './item-lists.ts';
 import { filterTranslations, getTranslationMigration, RequestGroup } from '../pluperfect.ts';
@@ -67,16 +67,16 @@ export async function getCoreReleases(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
 ): Promise<[boolean, Record<string, ReleaseStatus>]> {
-    const apiUrl = new URL(`/core/stable-check/1.0/`, `https://${locations.apiHost}/`);
-    const legacyJson = locations.legacyReleases(locations.ctx);
-    const migratedJson = locations.releases(locations.ctx);
+    const apiUrl = new URL(`/core/stable-check/1.0/`, `https://${conventions.apiHost}/`);
+    const legacyJson = conventions.legacyReleases(conventions.ctx);
+    const migratedJson = conventions.releases(conventions.ctx);
     if (!migratedJson.host || !legacyJson.relative || !migratedJson.relative) {
-        throw new Deno.errors.NotSupported(`locations values for releases are not valid.`);
+        throw new Deno.errors.NotSupported(`conventions values for releases are not valid.`);
     }
-    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
-    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
+    const legacyJsonPathname = toPathname(conventions.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(conventions.ctx, migratedJson);
     const [changed, releases, _migrated] = await probeMetaLegacyJson(
         reporter,
         jreporter,
@@ -103,13 +103,13 @@ export async function getCoreReleases(
 export async function getListOfReleases(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     releasesMap: Record<string, ReleaseStatus>,
 ): Promise<Array<string>> {
-    if (locations.interestingReleases) {
-        const interesting = locations.interestingReleases(locations.ctx);
+    if (conventions.interestingReleases) {
+        const interesting = conventions.interestingReleases(conventions.ctx);
         if (interesting.host && interesting.relative) {
-            const pathname = toPathname(locations.ctx, interesting);
+            const pathname = toPathname(conventions.ctx, interesting);
             const slugs = await getInterestingSlugs(reporter, jreporter, pathname);
             return slugs;
         }
@@ -137,22 +137,22 @@ export async function getListOfReleases(
 export async function getCoreTranslations(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     options: CommandOptions,
     release: string,
     outdated: boolean,
     locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
-    const apiUrl = new URL(`/translations/core/1.0/`, `https://${locations.apiHost}/`);
+    const apiUrl = new URL(`/translations/core/1.0/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('version', release);
-    const migratedJson = locations.coreTranslationV1_0(locations.ctx, release);
-    const legacyJson = locations.legacyCoreTranslationV1_0(locations.ctx, release);
+    const migratedJson = conventions.coreTranslationV1_0(conventions.ctx, release);
+    const legacyJson = conventions.legacyCoreTranslationV1_0(conventions.ctx, release);
     if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
         throw new Deno.errors.NotSupported(`coreTranslationV1_0 location and legacyCoreTranslationV1_0 are misconfigured.`);
     }
-    const migrator = getTranslationMigration(locations.coreL10nZip, locations.ctx, release);
-    const legacyJsonPathname = toPathname(locations.ctx, legacyJson);
-    const migratedJsonPathname = toPathname(locations.ctx, migratedJson);
+    const migrator = getTranslationMigration(conventions.coreL10nZip, conventions.ctx, release);
+    const legacyJsonPathname = toPathname(conventions.ctx, legacyJson);
+    const migratedJsonPathname = toPathname(conventions.ctx, migratedJson);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,
@@ -182,19 +182,19 @@ export async function getCoreTranslations(
 
 /**
  * Read a release and locale specific set of checksums from the upstream API.
- * @param locations how to access references.
+ * @param conventions how to access references.
  * @param release id string for the release. e.g. '6.2.2'
  * @param locale specific locale. e.g. 'de_DE'
  */
 export function getChecksums(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     release: string,
     locale: string,
 ): UrlProviderResult {
-    const apiUrl = new URL(`/core/checksums/1.0/`, `https://${locations.apiHost}/`);
+    const apiUrl = new URL(`/core/checksums/1.0/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
-    return locations.coreChecksumsV1_0(locations.ctx, release, locale, apiUrl.toString());
+    return conventions.coreChecksumsV1_0(conventions.ctx, release, locale, apiUrl.toString());
 }
 
 /**
@@ -204,38 +204,38 @@ export function getChecksums(
  * matt's name in it.
  * [FIXME?] Figure out how to load the entire set of contributors using a random
  * source.
- * @param locations how to access references.
+ * @param conventions how to access references.
  * @param options command-line options.
  * @param release id string for the release. e.g. '6.2.2'
  * @param locale specific locale. e.g. 'de_DE'
  * @param outdated true if latest transition is in progress.
  */
 export function getCredits(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     release: string,
     locale: string,
 ): UrlProviderResult {
-    const apiUrl = new URL(`/core/credits/1.1/`, `https://${locations.apiHost}/`);
+    const apiUrl = new URL(`/core/credits/1.1/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
-    return locations.coreCreditsV1_1(locations.ctx, release, locale, apiUrl.toString());
+    return conventions.coreCreditsV1_1(conventions.ctx, release, locale, apiUrl.toString());
 }
 
 /**
  * Read a release and locale specific set of importers from the upstream API.
- * @param locations how to access references.
+ * @param conventions how to access references.
  * @param release id string for the release. e.g. '6.2.2'
  * @param locale specific locale. e.g. 'de_DE'
  */
 export function getImporters(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     release: string,
     locale: string,
 ): UrlProviderResult {
-    const apiUrl = new URL(`/core/importers/1.1/`, `https://${locations.apiHost}/`);
+    const apiUrl = new URL(`/core/importers/1.1/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('version', release);
     apiUrl.searchParams.append('locale', locale);
-    return locations.coreImportersV1_1(locations.ctx, release, locale, apiUrl.toString());
+    return conventions.coreImportersV1_1(conventions.ctx, release, locale, apiUrl.toString());
 }
 
 /**
@@ -243,7 +243,7 @@ export function getImporters(
  * @param reporter how to report non-error text.
  * @param jreporter how to report structured JSON.
  * @param options command-line options.
- * @param locations how to access resources.
+ * @param conventions how to access resources.
  * @param locales list of interesting locales.
  * @param release release id, e.g. '6.6.2'
  * @returns a request group to bring the repo into sync.
@@ -252,36 +252,36 @@ export async function createCoreRequestGroup(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     locales: ReadonlyArray<string>,
     release: string,
 ): Promise<RequestGroup> {
     const requests: Array<UrlProviderResult> = [];
     const liveRequests: Array<LiveUrlProviderResult> = [];
-    const perRelease = await getCoreTranslations(reporter, jreporter, locations, options, release, false, locales);
+    const perRelease = await getCoreTranslations(reporter, jreporter, conventions, options, release, false, locales);
 
     // 12 core archive files per release - 4 groups of 3
     // 2 groups are required .zip and .tar.gz
     // 2 groups are optional -no-content.zip, and -new-bundled.zip
-    const archives = locations.coreZips.map((func) => func(locations.ctx, release));
+    const archives = conventions.coreZips.map((func) => func(conventions.ctx, release));
     requests.push(...archives);
 
     if (perRelease.translations && (perRelease.translations.length > 0)) {
         // for each translation
         for (const translation of perRelease.translations) {
-            requests.push(getCredits(locations, release, translation.language));
-            requests.push(getImporters(locations, release, translation.language));
+            requests.push(getCredits(conventions, release, translation.language));
+            requests.push(getImporters(conventions, release, translation.language));
             // zip file with l10n data
             // *locale*.zip
             // this is named after the locale version and should always exist
-            requests.push(locations.coreL10nZip(locations.ctx, release, translation.version, translation.language));
+            requests.push(conventions.coreL10nZip(conventions.ctx, release, translation.version, translation.language));
             if (release === translation.version) {
                 // 6 archive files per locale per release
                 // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
                 // these only exist if translation.version === release. i.e. they have been released.
-                requests.push(getChecksums(locations, release, translation.language));
-                const zips = locations.coreL10nZips.map((func) =>
-                    func(locations.ctx, release, translation.version, translation.language)
+                requests.push(getChecksums(conventions, release, translation.language));
+                const zips = conventions.coreL10nZips.map((func) =>
+                    func(conventions.ctx, release, translation.version, translation.language)
                 );
                 requests.push(...zips);
             }
@@ -290,16 +290,16 @@ export async function createCoreRequestGroup(
 
     // special case for en_US, since it is not a translation
     if (compareVersions.compare(release, '3.1.4', '>')) {
-        requests.push(getCredits(locations, release, 'en_US'));
+        requests.push(getCredits(conventions, release, 'en_US'));
     }
-    requests.push(getImporters(locations, release, 'en_US'));
-    requests.push(getChecksums(locations, release, 'en_US'));
+    requests.push(getImporters(conventions, release, 'en_US'));
+    requests.push(getChecksums(conventions, release, 'en_US'));
 
     return ({
-        sourceName: locations.ctx.sourceName,
+        sourceName: conventions.ctx.sourceName,
         section: 'core',
         slug: release,
-        statusFilename: locations.coreStatusFilename(locations.ctx, release),
+        statusFilename: conventions.coreStatusFilename(conventions.ctx, release),
         requests,
         liveRequests,
         noChanges: false,

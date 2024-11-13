@@ -30,7 +30,7 @@ import {
     SlugVersionOriginalUrlProvider,
     SlugVersionUrlProvider,
     splitDirname,
-    StandardLocations,
+    StandardConventions,
     UrlProviderResult,
     VersionLocaleVersionUrlProvider,
 } from './standards.ts';
@@ -435,14 +435,14 @@ const DOWNLOADS_HOST = 'downloads.wordpress.org';
 
 /**
  * default function definition for a factory function that returns a
- * `StandardsLocations` object.
- * The `StandardLocations` object is the configuration of the layout of
+ * `StandardsConventions` object.
+ * The `StandardConventions` object is the configuration of the layout of
  * resources across an arbitrary number of hosts.
  * It describes the locations for a single upstream source with an arbitrary name.
  * At this point, we only have one upstream source, but this may change if a
  * set of federated repositories emerge.
  */
-export default function getStandardLocations(sourceName: ArchiveSourceName = 'legacy'): StandardLocations {
+export default function getStandardConventions(sourceName: ArchiveSourceName = 'legacy'): StandardConventions {
     return {
         apiHost: 'api.wordpress.org',
         downloadsHost: DOWNLOADS_HOST,

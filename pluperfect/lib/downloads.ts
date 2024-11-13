@@ -20,7 +20,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import * as path from 'jsr:@std/path';
 import { ArchiveFileSummary } from '../../lib/archive-status.ts';
-import { ContentHostType, MigrationContext, StandardLocations, toPathname, UrlProviderResult } from '../../lib/standards.ts';
+import { ContentHostType, MigrationContext, StandardConventions, toPathname, UrlProviderResult } from '../../lib/standards.ts';
 import { getFilesKey } from '../pluperfect.ts';
 
 /**
@@ -334,7 +334,7 @@ function liveFilename(
 export async function downloadLiveFile(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     host: ContentHostType,
     sourceUrl: URL,
     targetDir: string,
@@ -342,11 +342,11 @@ export async function downloadLiveFile(
     middleLength: number,
 ): Promise<ArchiveFileSummary> {
     const filename = path.join(targetDir, liveFilename(originalName, 'download', middleLength));
-    if (!locations.ctx.hosts[host] || !locations.ctx.hosts[host].baseUrl) {
+    if (!conventions.ctx.hosts[host] || !conventions.ctx.hosts[host].baseUrl) {
         throw new Deno.errors.NotSupported(`${host} is not defined in migration context`);
     }
     const details = { host, upstream: sourceUrl.toString(), filename, url: sourceUrl };
-    const info = await downloadFile(reporter, jreporter, locations.ctx, details, true);
+    const info = await downloadFile(reporter, jreporter, conventions.ctx, details, true);
     if (middleLength === 0) {
         jreporter({ operation: 'downloadLiveFile', filename });
         return info;

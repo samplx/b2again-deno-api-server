@@ -23,7 +23,7 @@ import {
     META_LIST_SLUG_VALUES,
     MetaListItemType,
     MetaListSlug,
-    StandardLocations,
+    StandardConventions,
 } from '../../lib/standards.ts';
 
 export type ItemBrowseOptions = 'featured' | 'new' | 'popular' | 'updated' | undefined;
@@ -141,7 +141,7 @@ async function getAPIItemList(
 async function getUnlimitedItemList(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    locations: StandardConventions,
     itemType: MetaListItemType,
     kind: MetaListSlug,
 ): Promise<Array<ItemType>> {
@@ -184,7 +184,7 @@ async function getUnlimitedItemList(
 export async function getItemList(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    locations: StandardConventions,
     itemType: MetaListItemType,
     kind: MetaListSlug,
 ): Promise<Array<ItemType>> {
@@ -317,7 +317,7 @@ export function getInUpdateOrder(lists: ItemLists): Array<string> {
 export async function getItemLists(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    locations: StandardConventions,
     itemType: MetaListItemType,
 ): Promise<ItemLists> {
     let defaults: Array<ItemType> = [];
@@ -396,7 +396,7 @@ export async function getItemLists(
 export async function saveItemLists(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardLocations,
+    locations: StandardConventions,
     options: CommandOptions,
     itemType: MetaListItemType,
     lists: ItemLists,

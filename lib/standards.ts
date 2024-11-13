@@ -331,7 +331,7 @@ export type CommonFilenameProvider = (ctx: MigrationContext) => string;
  * in order to get the actual values.
  * All of the functions must be pure.
  */
-export interface StandardLocations {
+export interface StandardConventions {
     /**
      * upstream api server. normally 'api.wordpress.org'
      */

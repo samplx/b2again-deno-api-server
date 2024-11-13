@@ -26,12 +26,12 @@ import {
     JsonReporter,
 } from '../lib/reporter.ts';
 import { type CommandOptions, getParseOptions, printHelp } from './lib/options.ts';
-import getStandardLocations from '../lib/b2again-locations.ts';
+import getStandardConventions from '../lib/b2again-conventions.ts';
 import {
     ArchiveGroupName,
     LiveUrlProviderResult,
     MigrationContext,
-    StandardLocations,
+    StandardConventions,
     UrlProviderResult,
     VersionLocaleVersionUrlProvider,
 } from '../lib/standards.ts';
@@ -202,38 +202,38 @@ export function migrateRatings(ratings: Record<string, number>): Record<string, 
 
 /**
  * Verify process has permissions needed.
- * @param locations standard location of resources.
+ * @param conventions standard location of resources.
  * @returns 1 on failure, 0 if permissions exist.
  */
-async function checkPermissions(locations: StandardLocations): Promise<number> {
+async function checkPermissions(conventions: StandardConventions): Promise<number> {
     const envAccess = await Deno.permissions.request({ name: 'env' });
     if (envAccess.state !== 'granted') {
         console.error(`Error: process environment access is required to load parameters.`);
         return 1;
     }
-    for (const host in locations.ctx.hosts) {
-        if (locations.ctx.hosts[host].baseDirectory) {
-            const writeAccess = await Deno.permissions.request({ name: 'write', path: locations.ctx.hosts[host].baseDirectory });
+    for (const host in conventions.ctx.hosts) {
+        if (conventions.ctx.hosts[host].baseDirectory) {
+            const writeAccess = await Deno.permissions.request({ name: 'write', path: conventions.ctx.hosts[host].baseDirectory });
             if (writeAccess.state !== 'granted') {
-                console.error(`Error: write access is required to pluginsDir ${locations.ctx.hosts[host].baseDirectory}`);
+                console.error(`Error: write access is required to pluginsDir ${conventions.ctx.hosts[host].baseDirectory}`);
                 return 1;
             }
-            const readAccess = await Deno.permissions.request({ name: 'read', path: locations.ctx.hosts[host].baseDirectory });
+            const readAccess = await Deno.permissions.request({ name: 'read', path: conventions.ctx.hosts[host].baseDirectory });
             if (readAccess.state !== 'granted') {
-                console.error(`Error: read access is required to pluginsDir ${locations.ctx.hosts[host].baseDirectory}`);
+                console.error(`Error: read access is required to pluginsDir ${conventions.ctx.hosts[host].baseDirectory}`);
                 return 1;
             }
         }
     }
     // check for permissions
-    const apiAccess = await Deno.permissions.request({ name: 'net', host: locations.apiHost });
+    const apiAccess = await Deno.permissions.request({ name: 'net', host: conventions.apiHost });
     if (apiAccess.state !== 'granted') {
-        console.error(`Error: network access is required to api host ${locations.apiHost}`);
+        console.error(`Error: network access is required to api host ${conventions.apiHost}`);
         return 1;
     }
-    const downloadsAccess = await Deno.permissions.request({ name: 'net', host: locations.downloadsHost });
+    const downloadsAccess = await Deno.permissions.request({ name: 'net', host: conventions.downloadsHost });
     if (downloadsAccess.state !== 'granted') {
-        console.error(`Error: network access is required to downloads host ${locations.downloadsHost}`);
+        console.error(`Error: network access is required to downloads host ${conventions.downloadsHost}`);
         return 1;
     }
     return 0;
@@ -274,10 +274,10 @@ export function recentVersions(list: Array<string>, maxLength: number): Array<st
  */
 async function downloadRequestGroup(
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     group: RequestGroup,
 ): Promise<boolean> {
-    const groupStatus: ArchiveGroupStatus = await loadGroupStatus(locations, group);
+    const groupStatus: ArchiveGroupStatus = await loadGroupStatus(conventions, group);
     if (downloadIsComplete(options, group, groupStatus)) {
         jreporter({
             operation: 'downloadRequestGroup',
@@ -313,7 +313,7 @@ async function downloadRequestGroup(
                 !groupStatus.files[key].sha1 ||
                 !groupStatus.files[key].sha256;
 
-            const fileStatus = await downloadFile(reporter, jreporter, locations.ctx, item, options.force, needHash);
+            const fileStatus = await downloadFile(reporter, jreporter, conventions.ctx, item, options.force, needHash);
             if (groupStatus.files[key]) {
                 groupStatus.files[key].status = fileStatus.status;
                 groupStatus.files[key].when = fileStatus.when;
@@ -346,7 +346,7 @@ async function downloadRequestGroup(
         is_complete: ok,
         skipped: false,
     });
-    await saveGroupStatus(locations, group, groupStatus, options.jsonSpaces);
+    await saveGroupStatus(conventions, group, groupStatus, options.jsonSpaces);
 
     return groupStatus.is_complete;
 }
@@ -382,7 +382,7 @@ function downloadIsComplete(
  * @param jsonSpaces how to expand json. pretty or not?
  */
 async function saveGroupStatus(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     group: RequestGroup,
     groupStatus: ArchiveGroupStatus,
     jsonSpaces: string
@@ -390,7 +390,7 @@ async function saveGroupStatus(
     if (!group.statusFilename.relative || !group.statusFilename.host) {
         throw new Deno.errors.BadResource(`group.statusFilename.relative and group.statusFilename.host must be defined`);
     }
-    const baseDirectory = locations.ctx.hosts[group.statusFilename.host].baseDirectory;
+    const baseDirectory = conventions.ctx.hosts[group.statusFilename.host].baseDirectory;
     if (!baseDirectory) {
         throw new Deno.errors.BadResource(`group.statusFilename.host=${group.statusFilename.host} is not configured`);
     }
@@ -408,11 +408,11 @@ async function saveGroupStatus(
 }
 
 function getLocationPathname(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     host: string,
     relative: string
 ): string {
-    const baseDirectory = locations.ctx.hosts[host].baseDirectory;
+    const baseDirectory = conventions.ctx.hosts[host].baseDirectory;
     if (!baseDirectory) {
         throw new Deno.errors.BadResource(`host=${host} is not configured`);
     }
@@ -425,7 +425,7 @@ function getLocationPathname(
  * @returns previous group status, or an empty new one.
  */
 async function loadGroupStatus(
-    locations: StandardLocations,
+    conventions: StandardConventions,
     group: RequestGroup
 ): Promise<ArchiveGroupStatus> {
     const results: ArchiveGroupStatus = {
@@ -437,7 +437,7 @@ async function loadGroupStatus(
         files: {},
     };
     if (group.statusFilename.relative && group.statusFilename.host) {
-        const pathname = getLocationPathname(locations, group.statusFilename.host, group.statusFilename.relative);
+        const pathname = getLocationPathname(conventions, group.statusFilename.host, group.statusFilename.relative);
         try {
             const contents = await Deno.readTextFile(pathname);
             const parsed = JSON.parse(contents);
@@ -458,16 +458,16 @@ async function loadGroupStatus(
 
 /**
  * determine which locales should be kept.
- * @param locations how to get resources.
+ * @param conventions how to get resources.
  * @returns the list of interesting locales, or an empty list to indicate all.
  */
 async function getListOfLocales(
-    locations: StandardLocations,
+    conventions: StandardConventions,
 ): Promise<Array<string>> {
-    if (locations.interestingLocales) {
-        const { host, relative } = locations.interestingLocales(locations.ctx);
+    if (conventions.interestingLocales) {
+        const { host, relative } = conventions.interestingLocales(conventions.ctx);
         if (host && relative) {
-            const pathname = getLocationPathname(locations, host, relative);
+            const pathname = getLocationPathname(conventions, host, relative);
             return await getInterestingSlugs(reporter, jreporter, pathname);
         }
     }
@@ -478,26 +478,26 @@ async function getListOfLocales(
  * handle the core section. the core release files and the associated
  * l10n files and archives.
  * @param options command-line options.
- * @param locations how to get resources.
+ * @param conventions how to get resources.
  * @param locales list of locales we care about.
  */
 async function coreSection(
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const [changed, releasesMap] = await getCoreReleases(reporter, jreporter, options, locations);
+    const [changed, releasesMap] = await getCoreReleases(reporter, jreporter, options, conventions);
     if (!changed && options.synced) {
         jreporter({ operation: 'coreSection', action: 'no-changes' });
         return;
     }
-    const releases = await getListOfReleases(reporter, jreporter, locations, releasesMap);
+    const releases = await getListOfReleases(reporter, jreporter, conventions, releasesMap);
     let total = 0;
     let successful = 0;
     let failures = 0;
     for (const release of releases) {
-        const group = await createCoreRequestGroup(reporter, jreporter, options, locations, locales, release);
-        const ok = await downloadRequestGroup(options, locations, group);
+        const group = await createCoreRequestGroup(reporter, jreporter, options, conventions, locales, release);
+        const ok = await downloadRequestGroup(options, conventions, group);
         if (ok) {
             successful += 1;
         } else {
@@ -511,24 +511,24 @@ async function coreSection(
 /**
  * handle the download of plugins and the associated files.
  * @param options command-line options.
- * @param locations how to get resources.
+ * @param conventions how to get resources.
  * @param locales  list of locales we care about.
  */
 async function pluginsSection(
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const pluginLists = await getItemLists(reporter, jreporter, locations, 'plugin');
-    await saveItemLists(reporter, jreporter, locations, options, 'plugin', pluginLists);
+    const pluginLists = await getItemLists(reporter, jreporter, conventions, 'plugin');
+    await saveItemLists(reporter, jreporter, conventions, options, 'plugin', pluginLists);
 
     let total = 0;
     let successful = 0;
     let failures = 0;
     const slugs = getInUpdateOrder(pluginLists);
     for (const slug of slugs) {
-        const group = await createPluginRequestGroup(reporter, jreporter, options, locations, locales, slug);
-        const ok = await downloadRequestGroup(options, locations, group);
+        const group = await createPluginRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+        const ok = await downloadRequestGroup(options, conventions, group);
         if (ok) {
             successful += 1;
         } else {
@@ -542,24 +542,24 @@ async function pluginsSection(
 /**
  * handle the download of the themes and associated files.
  * @param options command-line options.
- * @param locations how to get resources.
+ * @param conventions how to get resources.
  * @param locales  list of locales we care about.
  */
 async function themesSection(
     options: CommandOptions,
-    locations: StandardLocations,
+    conventions: StandardConventions,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const themeLists = await getItemLists(reporter, jreporter, locations, 'theme');
-    await saveItemLists(reporter, jreporter, locations, options, 'theme', themeLists);
+    const themeLists = await getItemLists(reporter, jreporter, conventions, 'theme');
+    await saveItemLists(reporter, jreporter, conventions, options, 'theme', themeLists);
 
     let total = 0;
     let successful = 0;
     let failures = 0;
     const slugs = getInUpdateOrder(themeLists);
     for (const slug of slugs) {
-        const group = await createThemeRequestGroup(reporter, jreporter, options, locations, locales, slug);
-        const ok = await downloadRequestGroup(options, locations, group);
+        const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+        const ok = await downloadRequestGroup(options, conventions, group);
         if (ok) {
             successful += 1;
         } else {
@@ -594,15 +594,15 @@ export async function pluperfect(argv: Array<string>): Promise<number> {
     reporter(`${PROGRAM_NAME} v${VERSION}`);
     const timestamp = getISOtimestamp();
     reporter(`started:   ${timestamp}`);
-    const locations = getStandardLocations();
+    const conventions = getStandardConventions();
 
-    if (await checkPermissions(locations)) {
+    if (await checkPermissions(conventions)) {
         return 1;
     }
-    const locales = await getListOfLocales(locations);
-    await pluginsSection(options, locations, locales);
-    await themesSection(options, locations, locales);
-    await coreSection(options, locations, locales);
+    const locales = await getListOfLocales(conventions);
+    await pluginsSection(options, conventions, locales);
+    await themesSection(options, conventions, locales);
+    await coreSection(options, conventions, locales);
     jreporter({ operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
     reporter(`finished:   ${getISOtimestamp()}`);
     return 0;
