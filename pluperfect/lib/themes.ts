@@ -14,13 +14,18 @@
  *  limitations under the License.
  */
 
-import { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from '../../lib/api.ts';
-import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
-import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
-import { MigrationContext, StandardConventions, toPathname } from '../../lib/standards.ts';
-import { migrateRatings, recentVersions, RequestGroup, filterTranslations, getTranslationMigration } from '../pluperfect.ts';
+import type { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from '../../lib/api.ts';
+import {
+    getLiveUrlFromProvider,
+    getUrlFromProvider,
+    migrateStructure,
+    type MigrationStructureProvider,
+} from '../../lib/migration.ts';
+import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { type MigrationContext, type StandardConventions, toPathname } from '../../lib/standards.ts';
+import { filterTranslations, getTranslationMigration, migrateRatings, recentVersions, type RequestGroup } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import { CommandOptions } from './options.ts';
+import type { CommandOptions } from './options.ts';
 
 /**
  * migrate theme author resources.
@@ -198,7 +203,7 @@ export async function createThemeRequestGroup(
         legacyJsonPathname,
         migratedJsonPathname,
         url,
-        options.jsonSpaces,
+        conventions.jsonSpaces,
         getThemeMigrator(conventions, slug),
     );
 
@@ -233,32 +238,38 @@ export async function createThemeRequestGroup(
         }
         const recent = recentVersions(all, conventions.themeVersionLimit);
         for (const version of recent) {
-            group.requests.push(conventions.themeZip(conventions.ctx, slug, version, themeInfo.versions[version]));
+            if (options.readOnly) {
+                group.requests.push(conventions.themeZip(conventions.ctx, slug, version, themeInfo.versions[version]));
+            }
             const translations = conventions.themeTranslationV1_0(conventions.ctx, slug, version);
             const legacyTranslations = conventions.legacyThemeTranslationV1_0(conventions.ctx, slug, version);
             if (!legacyTranslations.relative || !translations.relative) {
                 throw new Deno.errors.NotSupported(`legacyThemeTranslationV1_0 and themeTranslationV1_0 must define pathnames`);
             }
-            group.requests.push(translations, legacyTranslations);
-            // since themes timestamps are largely absent, we always reload the current version's translations
-            // unless the theme.json file did not change at all.
-            const outdated = changed && ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
-            const details = await getThemeTranslations(reporter, jreporter, conventions, options, slug, version, outdated, locales);
-            if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
-                for (const item of details.translations) {
-                    if (item.version === version) {
-                        group.requests.push(conventions.themeL10nZip(conventions.ctx, slug, version, item.language));
+            if (options.l10n) {
+                if (options.meta) {
+                    group.requests.push(translations, legacyTranslations);
+                }
+                // since themes timestamps are largely absent, we always reload the current version's translations
+                // unless the theme.json file did not change at all.
+                const outdated = changed && ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
+                const details = await getThemeTranslations(reporter, jreporter, conventions, options, slug, version, outdated, locales);
+                if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
+                    for (const item of details.translations) {
+                        if (options.readOnly && (item.version === version)) {
+                            group.requests.push(conventions.themeL10nZip(conventions.ctx, slug, version, item.language));
+                        }
                     }
                 }
             }
         }
-    } else if (themeInfo.version && themeInfo.download_link) {
+    } else if (themeInfo.version && themeInfo.download_link && options.readOnly) {
         group.requests.push(conventions.themeZip(conventions.ctx, slug, themeInfo.version, themeInfo.download_link));
     }
-    if (themeInfo.preview_url) {
+    if (themeInfo.preview_url && options.live) {
         group.liveRequests.push(conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url));
     }
-    if (themeInfo.screenshot_url) {
+    if (themeInfo.screenshot_url && options.live) {
         // some ts.w.org URL's don't have a scheme?
         if (themeInfo.screenshot_url.startsWith('//')) {
             group.liveRequests.push(conventions.themeScreenshot(conventions.ctx, slug, `https:${themeInfo.screenshot_url}`));
@@ -312,7 +323,7 @@ async function getThemeTranslations(
         migratedJsonPathname,
         apiUrl,
         options.force || outdated,
-        options.jsonSpaces,
+        conventions.jsonSpaces,
         migrator,
     );
     const originals = originalTranslations as unknown as TranslationsResultV1_0;
@@ -325,7 +336,7 @@ async function getThemeTranslations(
             locales,
             legacyJsonPathname,
             migratedJsonPathname,
-            options.jsonSpaces,
+            conventions.jsonSpaces,
         );
     }
     return originals;
@@ -343,10 +354,12 @@ function getThemeInfoUrl(apiHost: string, name: string): URL {
     url.searchParams.append('slug', name);
     url.searchParams.append('fields[]', 'description');
     url.searchParams.append('fields[]', 'versions');
-    url.searchParams.append('fields[]', 'ratings');
-    url.searchParams.append('fields[]', 'active_installs');
+    // url.searchParams.append('fields[]', 'ratings');
+    // url.searchParams.append('fields[]', 'active_installs');
     url.searchParams.append('fields[]', 'sections');
     url.searchParams.append('fields[]', 'parent');
     url.searchParams.append('fields[]', 'template');
+    url.searchParams.append('fields[]', 'icons');
+    url.searchParams.append('fields[]', 'short_description');
     return url;
 }

@@ -13,13 +13,13 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-import { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
-import { CommandOptions } from './options.ts';
+import type { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
+import type { CommandOptions } from './options.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import { LiveUrlProviderResult, StandardConventions, toPathname, UrlProviderResult } from '../../lib/standards.ts';
-import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { hasPathname, type LiveUrlProviderResult, type StandardConventions, toPathname, type UrlProviderResult } from '../../lib/standards.ts';
+import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { getInterestingSlugs } from './item-lists.ts';
-import { filterTranslations, getTranslationMigration, RequestGroup } from '../pluperfect.ts';
+import { filterTranslations, getTranslationMigration, type RequestGroup } from '../pluperfect.ts';
 import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 
 /**
@@ -59,14 +59,14 @@ function translateRelease(o: Record<string, unknown>): Record<string, unknown> {
 
 /**
  * get the list of releases from the API. Always download this.
- * @param options command-line options.
- * @param metaDir where to store the results.
+ * @param reporter how to report non-error text.
+ * @param jreporter how to report structured JSON.
+ * @param conventions how to access resources, etc.
  * @returns map of release id to its current status.
  */
 export async function getCoreReleases(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    options: CommandOptions,
     conventions: StandardConventions,
 ): Promise<[boolean, Record<string, ReleaseStatus>]> {
     const apiUrl = new URL(`/core/stable-check/1.0/`, `https://${conventions.apiHost}/`);
@@ -84,7 +84,7 @@ export async function getCoreReleases(
         legacyJsonPathname,
         migratedJsonPathname,
         apiUrl,
-        options.jsonSpaces,
+        conventions.jsonSpaces,
         translateRelease,
     );
     if (releases && typeof releases === 'object') {
@@ -94,25 +94,45 @@ export async function getCoreReleases(
 }
 
 /**
+ * check for interesting releases to download.
+ * @param reporter how to report non-error text.
+ * @param jreporter how to report structured JSON.
+ * @param conventions how to access resources, etc.
+ * @returns list of interesting release ids that should be downloaded.
+ */
+export async function loadInterestingReleases(
+    reporter: ConsoleReporter,
+    jreporter: JsonReporter,
+    conventions: StandardConventions,
+): Promise<Array<string>> {
+    if (conventions.interestingReleases) {
+        const interesting = conventions.interestingReleases(conventions.ctx);
+        if (hasPathname(conventions.ctx, interesting)) {
+            const pathname = toPathname(conventions.ctx, interesting);
+            const slugs = await getInterestingSlugs(reporter, jreporter, pathname);
+            return slugs;
+        }
+    }
+    return [];
+}
+
+/**
  * Determine what releases to download.
+ * @param reporter how to report non-error text.
+ * @param jreporter how to report structured JSON.
+ * @param conventions how to access resources, etc.
  * @param releasesMap map of release id to their current status
- * @param listName which set of releases do we want
- * @param interestingFilename a file we may load with release ids.
  * @returns list of release ids that should be downloaded.
  */
-export async function getListOfReleases(
+export async function loadListOfReleases(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
     conventions: StandardConventions,
     releasesMap: Record<string, ReleaseStatus>,
 ): Promise<Array<string>> {
-    if (conventions.interestingReleases) {
-        const interesting = conventions.interestingReleases(conventions.ctx);
-        if (interesting.host && interesting.relative) {
-            const pathname = toPathname(conventions.ctx, interesting);
-            const slugs = await getInterestingSlugs(reporter, jreporter, pathname);
-            return slugs;
-        }
+    const interesting = await loadInterestingReleases(reporter, jreporter, conventions);
+    if (interesting.length !== 0) {
+        return interesting;
     }
     const releases = translateRelease(releasesMap) as unknown as CoreReleases;
     const list: Array<string> = [];
@@ -161,7 +181,7 @@ export async function getCoreTranslations(
         migratedJsonPathname,
         apiUrl,
         options.force || outdated,
-        options.jsonSpaces,
+        conventions.jsonSpaces,
         migrator,
     );
     const originals = originalTranslations as unknown as TranslationsResultV1_0;
@@ -174,7 +194,7 @@ export async function getCoreTranslations(
             locales,
             legacyJsonPathname,
             migratedJsonPathname,
-            options.jsonSpaces,
+            conventions.jsonSpaces,
         );
     }
     return originals;
@@ -258,42 +278,56 @@ export async function createCoreRequestGroup(
 ): Promise<RequestGroup> {
     const requests: Array<UrlProviderResult> = [];
     const liveRequests: Array<LiveUrlProviderResult> = [];
-    const perRelease = await getCoreTranslations(reporter, jreporter, conventions, options, release, false, locales);
 
     // 12 core archive files per release - 4 groups of 3
     // 2 groups are required .zip and .tar.gz
     // 2 groups are optional -no-content.zip, and -new-bundled.zip
-    const archives = conventions.coreZips.map((func) => func(conventions.ctx, release));
-    requests.push(...archives);
+    if (options.readOnly) {
+        const archives = conventions.coreZips.map((func) => func(conventions.ctx, release));
+        requests.push(...archives);
+    }
 
-    if (perRelease.translations && (perRelease.translations.length > 0)) {
-        // for each translation
-        for (const translation of perRelease.translations) {
-            requests.push(getCredits(conventions, release, translation.language));
-            requests.push(getImporters(conventions, release, translation.language));
-            // zip file with l10n data
-            // *locale*.zip
-            // this is named after the locale version and should always exist
-            requests.push(conventions.coreL10nZip(conventions.ctx, release, translation.version, translation.language));
-            if (release === translation.version) {
-                // 6 archive files per locale per release
-                // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
-                // these only exist if translation.version === release. i.e. they have been released.
-                requests.push(getChecksums(conventions, release, translation.language));
-                const zips = conventions.coreL10nZips.map((func) =>
-                    func(conventions.ctx, release, translation.version, translation.language)
-                );
-                requests.push(...zips);
+    if (options.l10n) {
+        const perRelease = await getCoreTranslations(reporter, jreporter, conventions, options, release, false, locales);
+        if (perRelease.translations && (perRelease.translations.length > 0)) {
+            // for each translation
+            for (const translation of perRelease.translations) {
+                if (options.meta) {
+                    requests.push(getCredits(conventions, release, translation.language));
+                    requests.push(getImporters(conventions, release, translation.language));
+                }
+                // zip file with l10n data
+                // *locale*.zip
+                // this is named after the locale version and should always exist
+                if (options.readOnly) {
+                    requests.push(conventions.coreL10nZip(conventions.ctx, release, translation.version, translation.language));
+                }
+                if (release === translation.version) {
+                    // 6 archive files per locale per release
+                    // .zip{,.md5,.sha1}, .tar.gz{,.md5,.sha1}
+                    // these only exist if translation.version === release. i.e. they have been released.
+                    if (options.meta) {
+                        requests.push(getChecksums(conventions, release, translation.language));
+                    }
+                    if (options.readOnly) {
+                        const zips = conventions.coreL10nZips.map((func) =>
+                            func(conventions.ctx, release, translation.version, translation.language)
+                        );
+                        requests.push(...zips);
+                    }
+                }
             }
         }
     }
 
-    // special case for en_US, since it is not a translation
-    if (compareVersions.compare(release, '3.1.4', '>')) {
-        requests.push(getCredits(conventions, release, 'en_US'));
+    if (options.meta) {
+        // special case for en_US, since it is not a translation
+        if (compareVersions.compare(release, '3.1.4', '>')) {
+            requests.push(getCredits(conventions, release, 'en_US'));
+        }
+        requests.push(getImporters(conventions, release, 'en_US'));
+        requests.push(getChecksums(conventions, release, 'en_US'));
     }
-    requests.push(getImporters(conventions, release, 'en_US'));
-    requests.push(getChecksums(conventions, release, 'en_US'));
 
     return ({
         sourceName: conventions.ctx.sourceName,

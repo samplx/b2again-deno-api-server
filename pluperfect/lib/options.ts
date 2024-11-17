@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { ParseOptions } from 'jsr:@std/cli/parse-args';
+import type { ParseOptions } from 'jsr:@std/cli/parse-args';
 
 /** default number of items without changes to be processed before stopping - 0 don't stop. */
 export const DEFAULT_NO_CHANGE_COUNT: number = 0;
@@ -39,14 +39,20 @@ export interface CommandOptions {
     json: boolean;
 
     /**
-     * spaces when rendering JSON.
-     */
-    jsonSpaces: string;
-
-    /**
      * attempt to download live resources.
      */
     live: boolean;
+    meta: boolean;
+    readOnly: boolean;
+
+    list: boolean;
+    summary: boolean;
+    l10n: boolean;
+
+    core: boolean;
+    patterns: boolean;
+    plugins: boolean;
+    themes: boolean;
 
     /**
      * number of no change items processed before we stop.
@@ -62,11 +68,6 @@ export interface CommandOptions {
      * flag indicating the message digest (hashes) should be recalculated.
      */
     rehash: boolean;
-
-    /**
-     * true if failures should be retried.
-     */
-    retry: boolean;
 
     /**
      * assume sync state (skip status checks when files don't change).
@@ -93,12 +94,19 @@ export function getParseOptions(): ParseOptions {
             force: false,
             help: false,
             json: false,
-            jsonSpaces: '',
             live: false,
+            meta: false,
+            readOnly: false,
+            list: false,
+            summary: false,
+            l10n: false,
+            core: false,
+            patterns: false,
+            plugins: false,
+            themes: false,
             noChangeCount: `${DEFAULT_NO_CHANGE_COUNT}`,
             quiet: false,
             rehash: false,
-            retry: false,
             synced: false,
             version: false,
         },
@@ -107,14 +115,21 @@ export function getParseOptions(): ParseOptions {
             'help',
             'json',
             'live',
+            'meta',
+            'readOnly',
+            'list',
+            'summary',
+            'l10n',
+            'core',
+            'patterns',
+            'plugins',
+            'themes',
             'quiet',
             'rehash',
             'synced',
-            'retry',
             'version',
         ],
         string: [
-            'jsonSpaces',
             'noChangeCount',
         ],
         unknown: (arg: string): unknown => {

@@ -14,16 +14,17 @@
  *  limitations under the License.
  */
 
-import { CommandOptions } from './options.ts';
 import { parse } from 'jsr:@std/jsonc';
 import * as path from 'jsr:@std/path';
-import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import {
-    CommonUrlProvider,
+    type CommonUrlProvider,
+    hasPathname,
     META_LIST_SLUG_VALUES,
-    MetaListItemType,
-    MetaListSlug,
-    StandardConventions,
+    type MetaListItemType,
+    type MetaListSlug,
+    type StandardConventions,
+    toPathname,
 } from '../../lib/standards.ts';
 
 export type ItemBrowseOptions = 'featured' | 'new' | 'popular' | 'updated' | undefined;
@@ -141,26 +142,26 @@ async function getAPIItemList(
 async function getUnlimitedItemList(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardConventions,
+    conventions: StandardConventions,
     itemType: MetaListItemType,
     kind: MetaListSlug,
 ): Promise<Array<ItemType>> {
     if (kind === 'interesting') {
-        const interesting = locations[`${itemType}Slugs`].interesting;
+        const interesting = conventions[`${itemType}Slugs`].interesting;
         if (interesting) {
-            const { pathname } = interesting(locations.ctx);
-            if (pathname) {
-                return await getInterestingItems(reporter, jreporter, pathname);
+            const details = interesting(conventions.ctx);
+            if (hasPathname(conventions.ctx, details)) {
+                return await getInterestingItems(reporter, jreporter, toPathname(conventions.ctx, details));
             }
         }
         return [];
     }
     if (kind === 'rejected') {
-        const rejected = locations[`${itemType}Slugs`].rejected;
+        const rejected = conventions[`${itemType}Slugs`].rejected;
         if (rejected) {
-            const { pathname } = rejected(locations.ctx);
-            if (pathname) {
-                return await getInterestingItems(reporter, jreporter, pathname);
+            const details = rejected(conventions.ctx);
+            if (hasPathname(conventions.ctx, details)) {
+                return await getInterestingItems(reporter, jreporter, toPathname(conventions.ctx, details));
             }
         }
         return [];
@@ -169,9 +170,9 @@ async function getUnlimitedItemList(
         return [];
     }
     if (kind === 'defaults') {
-        return await getAPIItemList(reporter, jreporter, locations.apiHost, itemType, undefined);
+        return await getAPIItemList(reporter, jreporter, conventions.apiHost, itemType, undefined);
     }
-    return await getAPIItemList(reporter, jreporter, locations.apiHost, itemType, kind);
+    return await getAPIItemList(reporter, jreporter, conventions.apiHost, itemType, kind);
 }
 
 /**
@@ -388,7 +389,7 @@ export async function getItemLists(
  * saves the item lists as a set of files.
  * @param reporter how to report non-error text.
  * @param jreporter how to report structured JSON logs.
- * @param locations how to find resources.
+ * @param conventions how to find resources.
  * @param options command-line options.
  * @param itemType plugin or theme.
  * @param lists actual lists we want to save.
@@ -396,23 +397,23 @@ export async function getItemLists(
 export async function saveItemLists(
     reporter: ConsoleReporter,
     jreporter: JsonReporter,
-    locations: StandardConventions,
-    options: CommandOptions,
+    conventions: StandardConventions,
     itemType: MetaListItemType,
     lists: ItemLists,
 ): Promise<void> {
-    const perItem = locations[`${itemType}Slugs`] as {
+    const perItem = conventions[`${itemType}Slugs`] as {
         [Property in MetaListSlug]?: CommonUrlProvider;
     };
     for (const root of META_LIST_SLUG_VALUES) {
         if (perItem[root] && lists[root] && (root !== 'interesting') && (root !== 'rejected')) {
-            const { host, pathname } = perItem[root](locations.ctx);
-            if (host && pathname) {
-                const text = JSON.stringify(lists[root], null, options.jsonSpaces);
+            const details = perItem[root](conventions.ctx);
+            if (hasPathname(conventions.ctx, details)) {
+                const text = JSON.stringify(lists[root], null, conventions.jsonSpaces);
+                const pathname = toPathname(conventions.ctx, details);
                 const dirname = path.dirname(pathname);
                 await Deno.mkdir(dirname, { recursive: true });
                 reporter(`save ${itemType} lists> ${pathname}`);
-                jreporter({ operation: 'saveItemLists', name: root, host, pathname, size: lists[root].length });
+                jreporter({ operation: 'saveItemLists', name: root, pathname, size: lists[root].length });
                 await Deno.writeTextFile(pathname, text);
             }
         }

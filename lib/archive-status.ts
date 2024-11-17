@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { ArchiveGroupName } from './standards.ts';
+import type { ArchiveGroupName } from './standards.ts';
 
 /**
  * Classification of a download group or file.

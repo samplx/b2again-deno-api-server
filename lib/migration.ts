@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from './standards.ts';
+import type { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from './standards.ts';
 
 /**
  * how to migrate an upstream resource (theme, plugin), to the

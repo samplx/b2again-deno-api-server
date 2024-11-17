@@ -14,13 +14,18 @@
  *  limitations under the License.
  */
 
-import { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
-import { getLiveUrlFromProvider, getUrlFromProvider, migrateStructure, MigrationStructureProvider } from '../../lib/migration.ts';
-import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
-import { MigrationContext, StandardConventions, toPathname } from '../../lib/standards.ts';
-import { migrateRatings, recentVersions, RequestGroup, filterTranslations, getTranslationMigration } from '../pluperfect.ts';
+import type { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
+import {
+    getLiveUrlFromProvider,
+    getUrlFromProvider,
+    migrateStructure,
+    type MigrationStructureProvider,
+} from '../../lib/migration.ts';
+import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { type MigrationContext, type StandardConventions, toPathname } from '../../lib/standards.ts';
+import { filterTranslations, getTranslationMigration, migrateRatings, recentVersions, type RequestGroup } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import { CommandOptions } from './options.ts';
+import type { CommandOptions } from './options.ts';
 
 /**
  * Determine the URL to use to request plugin information.
@@ -77,7 +82,10 @@ function migrateVersions(
         if (version === 'trunk') {
             migrated[version] = undefined;
         } else {
-            const url = getUrlFromProvider(conventions.ctx, conventions.pluginZip(conventions.ctx, slug, version, versions[version]));
+            const url = getUrlFromProvider(
+                conventions.ctx,
+                conventions.pluginZip(conventions.ctx, slug, version, versions[version]),
+            );
             migrated[version] = url;
         }
     }
@@ -231,7 +239,7 @@ export async function createPluginRequestGroup(
         legacyJsonPathname,
         migratedJsonPathname,
         url,
-        options.jsonSpaces,
+        conventions.jsonSpaces,
         getPluginMigrator(conventions, slug),
     );
 
@@ -266,7 +274,7 @@ export async function createPluginRequestGroup(
         }
         const recent = recentVersions(all, conventions.pluginVersionLimit);
         for (const version of recent) {
-            if (pluginInfo.versions[version]) {
+            if (pluginInfo.versions[version] && options.readOnly) {
                 group.requests.push(conventions.pluginZip(conventions.ctx, slug, version, pluginInfo.versions[version]));
             }
             const translations = conventions.pluginTranslationV1_0(conventions.ctx, slug, version);
@@ -276,22 +284,28 @@ export async function createPluginRequestGroup(
                     `legacyPluginTranslationV1_0 and pluginTranslationV1_0 must define pathnames`,
                 );
             }
-            group.requests.push(translations, legacyTranslations);
-            const outdated = changed && ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
-            const details = await getPluginTranslations(
-                reporter,
-                jreporter,
-                conventions,
-                options,
-                slug,
-                version,
-                outdated,
-                locales,
-            );
-            if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
-                for (const item of details.translations) {
-                    if (item.version === version) {
-                        group.requests.push(conventions.pluginL10nZip(conventions.ctx, slug, version, item.language));
+            if (options.l10n) {
+                if (options.meta) {
+                    group.requests.push(translations, legacyTranslations);
+                }
+                if (options.readOnly) {
+                    const outdated = changed && ((typeof pluginInfo.version === 'string') && (pluginInfo.version === version));
+                    const details = await getPluginTranslations(
+                        reporter,
+                        jreporter,
+                        conventions,
+                        options,
+                        slug,
+                        version,
+                        outdated,
+                        locales,
+                    );
+                    if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
+                        for (const item of details.translations) {
+                            if (item.version === version) {
+                                group.requests.push(conventions.pluginL10nZip(conventions.ctx, slug, version, item.language));
+                            }
+                        }
                     }
                 }
             }
@@ -343,19 +357,19 @@ async function getPluginTranslations(
     outdated: boolean,
     locales: ReadonlyArray<string>,
 ): Promise<TranslationsResultV1_0> {
-    const apiUrl = new URL(`/translations/themes/1.0/`, `https://${conventions.apiHost}/`);
+    const apiUrl = new URL(`/translations/plugins/1.0/`, `https://${conventions.apiHost}/`);
     apiUrl.searchParams.append('slug', slug);
     apiUrl.searchParams.append('version', version);
 
-    const migratedJson = conventions.themeTranslationV1_0(conventions.ctx, slug, version);
-    const legacyJson = conventions.legacyThemeTranslationV1_0(conventions.ctx, slug, version);
+    const migratedJson = conventions.pluginTranslationV1_0(conventions.ctx, slug, version);
+    const legacyJson = conventions.legacyPluginTranslationV1_0(conventions.ctx, slug, version);
     if (!migratedJson.host || !migratedJson.relative || !legacyJson.relative) {
-        throw new Deno.errors.NotSupported(`themeTranslationV1_0 location and legacyThemeTranslationV1_0 are misconfigured.`);
+        throw new Deno.errors.NotSupported(`pluginTranslationV1_0 location and legacyPluginTranslationV1_0 are misconfigured.`);
     }
     const legacyJsonPathname = toPathname(conventions.ctx, legacyJson);
     const migratedJsonPathname = toPathname(conventions.ctx, migratedJson);
 
-    const migrator = getTranslationMigration(conventions.themeL10nZip, conventions.ctx, slug);
+    const migrator = getTranslationMigration(conventions.pluginL10nZip, conventions.ctx, slug);
     const [originalTranslations, migratedTranslations] = await downloadMetaLegacyJson(
         reporter,
         jreporter,
@@ -364,7 +378,7 @@ async function getPluginTranslations(
         migratedJsonPathname,
         apiUrl,
         options.force || outdated,
-        options.jsonSpaces,
+        conventions.jsonSpaces,
         migrator,
     );
     const originals = originalTranslations as unknown as TranslationsResultV1_0;
@@ -377,7 +391,7 @@ async function getPluginTranslations(
             locales,
             legacyJsonPathname,
             migratedJsonPathname,
-            options.jsonSpaces,
+            conventions.jsonSpaces,
         );
     }
     return originals;

@@ -17,22 +17,22 @@
 import * as path from 'jsr:@std/path';
 
 import {
-    ArchiveGroupName,
-    ArchiveSourceName,
-    CommonUrlProvider,
-    ContentHostType,
-    LiveUrlProviderResult,
-    MigrationContext,
-    SlugLocaleOriginalUrlProvider,
-    SlugOriginalLiveUrlProvider,
-    SlugOriginalUrlProvider,
-    SlugUrlProvider,
-    SlugVersionOriginalUrlProvider,
-    SlugVersionUrlProvider,
+    type ArchiveGroupName,
+    type ArchiveSourceName,
+    type CommonUrlProvider,
+    type ContentHostType,
+    type LiveUrlProviderResult,
+    type MigrationContext,
+    type SlugLocaleOriginalUrlProvider,
+    type SlugOriginalLiveUrlProvider,
+    type SlugOriginalUrlProvider,
+    type SlugUrlProvider,
+    type SlugVersionOriginalUrlProvider,
+    type SlugVersionUrlProvider,
     splitDirname,
-    StandardConventions,
-    UrlProviderResult,
-    VersionLocaleVersionUrlProvider,
+    type StandardConventions,
+    type UrlProviderResult,
+    type VersionLocaleVersionUrlProvider,
 } from './standards.ts';
 
 /**
@@ -455,6 +455,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
                 downloads: {
                     baseUrl: 'https://downloads.b2again.org/',
                     baseDirectory: DOWNLOADS_BASE_DIRECTORY,
+                    s3sink: 'r2downloads',
                 },
                 support: {
                     baseUrl: 'https://support.b2again.org/',
@@ -473,17 +474,18 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         },
         pluginVersionLimit: 10,
         themeVersionLimit: 0,
+        jsonSpaces: '',
         releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
         legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
         // interestingReleases -- default to all releases -- can be json w/comments or slugs
-        // interestingReleases: getCommonProvider('downloads', 'core', sourceName, `my-releases.jsonc`),
+        interestingReleases: getCommonProvider('downloads', 'core', sourceName, `my-releases.jsonc`),
         // interestingLocales -- default to all locales -- can be json w/comments or slugs
         // interestingLocales: getCommonProvider('downloads', 'core', sourceName, `my-locales.jsonc`),
         pluginSlugs: {
             defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'plugins', sourceName, `featured-list.json`),
-            interesting: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `interesting-list.json`),
+            interesting: getCommonProvider('downloads', 'plugins', sourceName, `my-plugins.json`),
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
@@ -493,7 +495,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             defaults: getCommonProvider('downloads', 'themes', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'themes', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'themes', sourceName, `featured-list.json`),
-            interesting: undefined, // getCommonProvider('downloads', 'themes', sourceName, `interesting-list.json`),
+            interesting: getCommonProvider('downloads', 'themes', sourceName, `my-themes.json`),
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),
@@ -561,6 +563,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         pluginSupport: getSlugUrlProvider('support', 'plugins', sourceName, 'support'),
         pluginHomepage: getSlugUrlProvider('support', 'plugins', sourceName, 'homepages'),
         pluginScreenshot: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'screenshots'),
+        pluginIcon: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'icons'),
         pluginBanner: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'banners'),
         pluginPreview: getSlugLiveIndexUrlProvider('downloads', 'plugins', sourceName, 'preview'),
 

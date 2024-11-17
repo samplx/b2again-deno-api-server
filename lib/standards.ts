@@ -116,7 +116,7 @@ export function isValidMetaListItemType(name: string): boolean {
 /**
  * information to configure a host type.
  */
-export interface HostBasePair {
+export interface ArchiveHostAccess {
     /**
      * optional base directory, only needed if files are kept. if not
      * defined, URL's are defined, but no archives.
@@ -127,6 +127,11 @@ export interface HostBasePair {
      * base URL to be used for the resource.
      */
     readonly baseUrl: string;
+
+    /**
+     * optional s3 sink where files are mirrored.
+     */
+    readonly s3sink?: string;
 }
 
 /**
@@ -142,7 +147,7 @@ export interface MigrationContext {
     /**
      * map of hosts and host specific settings.
      */
-    hosts: Record<ContentHostType, HostBasePair>;
+    hosts: Record<ContentHostType, ArchiveHostAccess>;
 
     /**
      * how many characters in any slug splitting prefix directory.
@@ -171,12 +176,12 @@ export interface UrlProviderResult {
     /**
      * which host contains the result, undefined source URL is unchanged.
      */
-    readonly host?: ContentHostType;
+    readonly host: ContentHostType;
 
     /**
      * if an actual file, the relative path to it from the base directory.
      */
-    readonly relative?: string;
+    readonly relative: string;
 
     /**
      * downstream version of the resource. always defined.
@@ -358,6 +363,11 @@ export interface StandardConventions {
     themeVersionLimit: number;
 
     /**
+     * controls how JSON is expanded.
+     */
+    jsonSpaces: string;
+
+    /**
      * JSON file containing core release lists: latest, outdated, insecure.
      */
     releases: CommonUrlProvider;
@@ -505,6 +515,11 @@ export interface StandardConventions {
     pluginScreenshot: SlugOriginalLiveUrlProvider;
 
     /**
+     * icon files.
+     */
+    pluginIcon: SlugOriginalLiveUrlProvider;
+
+    /**
      * banner files.
      */
     pluginBanner: SlugOriginalLiveUrlProvider;
@@ -635,4 +650,38 @@ export function toPathname(ctx: MigrationContext, provider: UrlProviderResult): 
         throw new Deno.errors.BadResource(`host ${provider.host} is not configured for output`);
     }
     return path.join(baseDirectory, provider.relative);
+}
+
+/**
+ * determine if the url is stored locally.
+ * @param ctx bag of information used to convert urls.
+ * @param provider result about a url.
+ * @returns true if there is a local filename associated with the result.
+ */
+export function hasPathname(ctx: MigrationContext, provider: UrlProviderResult): boolean {
+    if (!provider.host || !provider.relative) {
+        return false;
+    }
+    const baseDirectory = ctx.hosts[provider.host]?.baseDirectory;
+    if (!ctx.hosts[provider.host] || !baseDirectory) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * determine if the url should be copied to an s3 bucket.
+ * @param ctx bag of information used to convert urls.
+ * @param provider result about a url.
+ * @returns true if there is/or should be a copy of the resource in an s3 bucket.
+ */
+export function hasS3Sink(ctx: MigrationContext, provider: UrlProviderResult): boolean {
+    if (!provider.host || !provider.relative) {
+        return false;
+    }
+    const s3sink = ctx.hosts[provider.host]?.s3sink;
+    if (!ctx.hosts[provider.host] || !s3sink) {
+        return false;
+    }
+    return true;
 }

@@ -15,35 +15,39 @@
  *  limitations under the License.
  */
 
-import { parseArgs, ParseOptions } from 'jsr:@std/cli/parse-args';
+import { parseArgs, type ParseOptions } from 'jsr:@std/cli/parse-args';
 import {
-    ConsoleReporter,
+    type ConsoleReporter,
     DISABLED_CONSOLE_REPORTER,
     DISABLED_JSON_REPORTER,
     ENABLED_CONSOLE_REPORTER,
     ENABLED_JSON_REPORTER,
     getISOtimestamp,
-    JsonReporter,
+    type JsonReporter,
 } from '../lib/reporter.ts';
 import { type CommandOptions, getParseOptions, printHelp } from './lib/options.ts';
 import getStandardConventions from '../lib/b2again-conventions.ts';
 import {
-    ArchiveGroupName,
-    LiveUrlProviderResult,
-    MigrationContext,
-    StandardConventions,
-    UrlProviderResult,
-    VersionLocaleVersionUrlProvider,
+hasPathname,
+toPathname,
+    type ArchiveGroupName,
+    type LiveUrlProviderResult,
+    type MigrationContext,
+    type StandardConventions,
+    type UrlProviderResult,
+    type VersionLocaleVersionUrlProvider,
 } from '../lib/standards.ts';
-import { createCoreRequestGroup, getCoreReleases, getListOfReleases } from './lib/core.ts';
+import { createCoreRequestGroup, getCoreReleases, loadInterestingReleases, loadListOfReleases } from './lib/core.ts';
 import { getInterestingSlugs, getInUpdateOrder, getItemLists, saveItemLists } from './lib/item-lists.ts';
 import { downloadFile } from './lib/downloads.ts';
-import { ArchiveGroupStatus } from '../lib/archive-status.ts';
+import type { ArchiveGroupStatus } from '../lib/archive-status.ts';
 import * as path from 'jsr:@std/path';
 import { createThemeRequestGroup } from './lib/themes.ts';
 import { createPluginRequestGroup } from './lib/plugins.ts';
-import { TranslationEntry, TranslationsResultV1_0 } from '../lib/api.ts';
+import type { TranslationEntry, TranslationsResultV1_0 } from '../lib/api.ts';
 import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
+import { s3Cleanup, s3Setup } from './lib/s3files.ts';
+import { load } from 'jsr:@std/dotenv';
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -262,8 +266,7 @@ export function recentVersions(list: Array<string>, maxLength: number): Array<st
     if (maxLength > 0) {
         return sorted.slice(0, maxLength);
     }
-    // return the full list so we will eventually get the non semver ones.
-    return list;
+    return filtered;
 }
 
 /**
@@ -346,7 +349,7 @@ async function downloadRequestGroup(
         is_complete: ok,
         skipped: false,
     });
-    await saveGroupStatus(conventions, group, groupStatus, options.jsonSpaces);
+    await saveGroupStatus(conventions, group, groupStatus);
 
     return groupStatus.is_complete;
 }
@@ -384,8 +387,7 @@ function downloadIsComplete(
 async function saveGroupStatus(
     conventions: StandardConventions,
     group: RequestGroup,
-    groupStatus: ArchiveGroupStatus,
-    jsonSpaces: string
+    groupStatus: ArchiveGroupStatus
 ): Promise<void> {
     if (!group.statusFilename.relative || !group.statusFilename.host) {
         throw new Deno.errors.BadResource(`group.statusFilename.relative and group.statusFilename.host must be defined`);
@@ -396,7 +398,7 @@ async function saveGroupStatus(
     }
     const pathname = path.join(baseDirectory, group.statusFilename.relative);
     try {
-        const json = JSON.stringify(groupStatus, null, jsonSpaces);
+        const json = JSON.stringify(groupStatus, null, conventions.jsonSpaces);
         const dirname = path.dirname(pathname);
         await Deno.mkdir(dirname, { recursive: true });
         await Deno.writeTextFile(pathname, json);
@@ -407,18 +409,6 @@ async function saveGroupStatus(
     jreporter({ operation: 'downloadGroup', filename: pathname, is_complete: groupStatus.is_complete });
 }
 
-function getLocationPathname(
-    conventions: StandardConventions,
-    host: string,
-    relative: string
-): string {
-    const baseDirectory = conventions.ctx.hosts[host].baseDirectory;
-    if (!baseDirectory) {
-        throw new Deno.errors.BadResource(`host=${host} is not configured`);
-    }
-    return path.join(baseDirectory, relative);
-}
-
 /**
  * attempt to read the status file, or initialize a new one.
  * @param group collection of files to be downloaded.
@@ -426,7 +416,7 @@ function getLocationPathname(
  */
 async function loadGroupStatus(
     conventions: StandardConventions,
-    group: RequestGroup
+    group: RequestGroup,
 ): Promise<ArchiveGroupStatus> {
     const results: ArchiveGroupStatus = {
         source_name: group.sourceName,
@@ -436,8 +426,8 @@ async function loadGroupStatus(
         when: Date.now(),
         files: {},
     };
-    if (group.statusFilename.relative && group.statusFilename.host) {
-        const pathname = getLocationPathname(conventions, group.statusFilename.host, group.statusFilename.relative);
+    if (hasPathname(conventions.ctx, group.statusFilename)) {
+        const pathname = toPathname(conventions.ctx, group.statusFilename);
         try {
             const contents = await Deno.readTextFile(pathname);
             const parsed = JSON.parse(contents);
@@ -465,13 +455,29 @@ async function getListOfLocales(
     conventions: StandardConventions,
 ): Promise<Array<string>> {
     if (conventions.interestingLocales) {
-        const { host, relative } = conventions.interestingLocales(conventions.ctx);
-        if (host && relative) {
-            const pathname = getLocationPathname(conventions, host, relative);
+        const locales = conventions.interestingLocales(conventions.ctx);
+        if (hasPathname(conventions.ctx, locales)) {
+            const pathname = toPathname(conventions.ctx, locales);
             return await getInterestingSlugs(reporter, jreporter, pathname);
         }
     }
     return [];
+}
+
+async function getListOfReleases(
+    options: CommandOptions,
+    conventions: StandardConventions,
+): Promise<ReadonlyArray<string>> {
+    if (options.list) {
+        const [changed, releasesMap] = await getCoreReleases(reporter, jreporter, conventions);
+        if (!changed && options.synced) {
+            jreporter({ operation: 'coreSection', action: 'no-changes' });
+            return [];
+        }
+        const releases = await loadListOfReleases(reporter, jreporter, conventions, releasesMap);
+        return releases;
+    }
+    return await loadInterestingReleases(reporter, jreporter, conventions);
 }
 
 /**
@@ -486,26 +492,55 @@ async function coreSection(
     conventions: StandardConventions,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const [changed, releasesMap] = await getCoreReleases(reporter, jreporter, options, conventions);
-    if (!changed && options.synced) {
-        jreporter({ operation: 'coreSection', action: 'no-changes' });
-        return;
+    const releases = await getListOfReleases(options, conventions);
+    if (releases.length > 0) {
+        let total = 0;
+        let successful = 0;
+        let failures = 0;
+        for (const release of releases) {
+            const group = await createCoreRequestGroup(reporter, jreporter, options, conventions, locales, release);
+            const ok = await downloadRequestGroup(options, conventions, group);
+            if (ok) {
+                successful += 1;
+            } else {
+                failures += 1;
+            }
+            total += 1;
+        }
+        jreporter({ operation: 'coreSection', action: 'complete', total, successful, failures });
     }
-    const releases = await getListOfReleases(reporter, jreporter, conventions, releasesMap);
+}
+
+
+/**
+ * handle the download of the editor patterns and associated files.
+ * @param options command-line options.
+ * @param conventions how to get resources.
+ * @param locales  list of locales we care about.
+ */
+async function patternsSection(
+    options: CommandOptions,
+    conventions: StandardConventions,
+    locales: ReadonlyArray<string>,
+): Promise<void> {
+    // const themeLists = await getItemLists(reporter, jreporter, conventions, 'theme');
+    // await saveItemLists(reporter, jreporter, conventions, options, 'theme', themeLists);
+
     let total = 0;
     let successful = 0;
     let failures = 0;
-    for (const release of releases) {
-        const group = await createCoreRequestGroup(reporter, jreporter, options, conventions, locales, release);
-        const ok = await downloadRequestGroup(options, conventions, group);
-        if (ok) {
-            successful += 1;
-        } else {
-            failures += 1;
-        }
-        total += 1;
-    }
-    jreporter({ operation: 'coreSection', action: 'complete', total, successful, failures });
+    // const slugs = getInUpdateOrder(themeLists);
+    // for (const slug of slugs) {
+    //     const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+    //     const ok = await downloadRequestGroup(options, conventions, group);
+    //     if (ok) {
+    //         successful += 1;
+    //     } else {
+    //         failures += 1;
+    //     }
+    //     total += 1;
+    // }
+    jreporter({ operation: 'patternsSection', action: 'complete', total, successful, failures });
 }
 
 /**
@@ -520,7 +555,7 @@ async function pluginsSection(
     locales: ReadonlyArray<string>,
 ): Promise<void> {
     const pluginLists = await getItemLists(reporter, jreporter, conventions, 'plugin');
-    await saveItemLists(reporter, jreporter, conventions, options, 'plugin', pluginLists);
+    await saveItemLists(reporter, jreporter, conventions, 'plugin', pluginLists);
 
     let total = 0;
     let successful = 0;
@@ -551,7 +586,7 @@ async function themesSection(
     locales: ReadonlyArray<string>,
 ): Promise<void> {
     const themeLists = await getItemLists(reporter, jreporter, conventions, 'theme');
-    await saveItemLists(reporter, jreporter, conventions, options, 'theme', themeLists);
+    await saveItemLists(reporter, jreporter, conventions, 'theme', themeLists);
 
     let total = 0;
     let successful = 0;
@@ -568,6 +603,15 @@ async function themesSection(
         total += 1;
     }
     jreporter({ operation: 'themesSection', action: 'complete', total, successful, failures });
+}
+
+async function setupS3Hosts(conventions: StandardConventions): Promise<void> {
+    for (const host of Object.keys(conventions.ctx.hosts)) {
+        const s3sink = conventions.ctx.hosts[host]?.s3sink;
+        if (s3sink) {
+            await s3Setup(s3sink);
+        }
+    }
 }
 
 /**
@@ -591,18 +635,60 @@ export async function pluperfect(argv: Array<string>): Promise<number> {
     } else if (options.quiet) {
         reporter = DISABLED_CONSOLE_REPORTER;
     }
+
+    // to make my life easier, we update settings to make defaults
+    // a little nicer.
+
+    // we will execute all sections if none are explicitly selected.
+    if (!options.core && !options.patterns && !options.plugins && !options.themes) {
+        options.core = true;
+        options.patterns = true;
+        options.plugins = true;
+        options.themes = true;
+    }
+
+    // we will perform all steps if none are explicitly selected.
+    if (!options.l10n && !options.list && !options.meta && !options.readOnly && !options.summary && !options.live) {
+        options.l10n = true;
+        options.list = true;
+        options.meta = true;
+        options.readOnly = true;
+        options.summary = true;
+        options.live = true;
+    }
+
     reporter(`${PROGRAM_NAME} v${VERSION}`);
     const timestamp = getISOtimestamp();
     reporter(`started:   ${timestamp}`);
+
     const conventions = getStandardConventions();
 
     if (await checkPermissions(conventions)) {
         return 1;
     }
+    // load .env file if it exists
+    await load({
+        export: true,
+    });
+    // with the environment setup, we have creds for S3/R2
+    await setupS3Hosts(conventions);
+
+    // determine if we want a subset of locales or not.
     const locales = await getListOfLocales(conventions);
-    await pluginsSection(options, conventions, locales);
-    await themesSection(options, conventions, locales);
-    await coreSection(options, conventions, locales);
+
+    // if (options.patterns) {
+    //     await patternsSection(options, conventions, locales);
+    // }
+    if (options.plugins) {
+        await pluginsSection(options, conventions, locales);
+    }
+    if (options.themes) {
+        await themesSection(options, conventions, locales);
+    }
+    if (options.core) {
+        await coreSection(options, conventions, locales);
+    }
+    await s3Cleanup();
     jreporter({ operation: 'main', program: PROGRAM_NAME, version: VERSION, started: timestamp });
     reporter(`finished:   ${getISOtimestamp()}`);
     return 0;

@@ -16,12 +16,20 @@
 
 /// <reference types="npm:@types/node" />
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
+import { createReadStream } from 'node:fs';
+import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import * as path from 'jsr:@std/path';
-import { ArchiveFileSummary } from '../../lib/archive-status.ts';
-import { ContentHostType, MigrationContext, StandardConventions, toPathname, UrlProviderResult } from '../../lib/standards.ts';
+import type { ArchiveFileSummary } from '../../lib/archive-status.ts';
+import {
+    type ContentHostType,
+    hasPathname,
+    type MigrationContext,
+    type StandardConventions,
+    toPathname,
+    type UrlProviderResult,
+} from '../../lib/standards.ts';
 import { getFilesKey } from '../pluperfect.ts';
+import { getS3dir, getS3sink, s3FileMove, s3ObjectDelete, s3ObjectExists } from './s3files.ts';
 
 /**
  * A simple Either-like interface for an error (left-side) value.
@@ -33,17 +41,33 @@ export interface DownloadErrorInfo {
 /**
  * determine if download is needed. has side-effects.
  * @param details upstream url and downstream pathname.
+ * @param ctx bag of information used to convert urls.
  * @param force should we remove the files before we start.
+ * @param needHash do we need to recalculate hashes (forces a re-download on S3)
  * @returns
  */
 async function isDownloadNeeded(
     details: UrlProviderResult,
     ctx: MigrationContext,
     force: boolean,
+    needHash: boolean
 ): Promise<boolean> {
-    if (!details.relative) {
-        throw new Deno.errors.NotSupported('details.relative must be defined');
+    // if we don't keep a local copy, we don't download one.
+    if (!hasPathname(ctx, details)) {
+        return false;
     }
+    if (!details.relative || !details.host) {
+        throw new Deno.errors.NotSupported('details.relative and details.host must be defined');
+    }
+    const s3sink = getS3sink(ctx, details.host);
+    if (s3sink) {
+        if (force || needHash) {
+            await s3ObjectDelete(s3sink, details.relative);
+        }
+        const exists = await s3ObjectExists(s3sink, details.relative);
+        return !exists;
+    }
+
     let needed = false;
     const pathname = toPathname(ctx, details);
     try {
@@ -72,11 +96,23 @@ async function fetchFile(
     if (!details.host || !details.relative || !details.upstream) {
         throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
     }
-
-    const pathname = toPathname(ctx, details);
     const filesKey = getFilesKey(details.host, details.relative);
 
-    const targetDir = path.dirname(pathname);
+    let targetDir;
+    let pathname;
+    const s3sink = getS3sink(ctx, details.host);
+    if (s3sink) {
+        targetDir = getS3dir(s3sink);
+        if (!targetDir) {
+            throw new Deno.errors.BadResource(`temporary directory for s3sink ${s3sink} must be defined`);
+        }
+        pathname = path.join(targetDir, path.basename(details.relative));
+    } else {
+        pathname = toPathname(ctx, details);
+        targetDir = path.dirname(pathname);
+        await Deno.mkdir(targetDir, { recursive: true });
+    }
+
     const when = Date.now();
     const md5hash = createHash('md5');
     const sha1hash = createHash('sha1');
@@ -89,14 +125,12 @@ async function fetchFile(
         filename: pathname,
     });
 
-    await Deno.mkdir(targetDir, { recursive: true });
-    const output = createWriteStream(pathname, {
-        flags: 'wx',
-        encoding: 'binary',
-    });
+    using fp = await Deno.open(pathname, { read: true, write: true, createNew: true });
+    const output = fp.writable.getWriter();
+    await output.ready;
     const response = await fetch(details.upstream);
     if (!response.ok || !response.body) {
-        output.close();
+        await output.close();
         jreporter({
             operation: 'downloadFile',
             action: 'fetch',
@@ -120,9 +154,13 @@ async function fetchFile(
     const md5 = md5hash.digest('hex');
     const sha1 = sha1hash.digest('hex');
     const sha256 = sha256hash.digest('hex');
-    output.close();
+    await output.close();
     if (details.is_readonly) {
         await Deno.chmod(pathname, 0o444);
+    }
+    if (s3sink) {
+        jreporter({ operation: 's3FileMove', s3sink, pathname, destination: details.relative });
+        await s3FileMove(s3sink, pathname, details.relative);
     }
     return {
         key: filesKey,
@@ -239,7 +277,7 @@ export async function downloadFile(
     if (!details.host || !details.relative || !details.upstream) {
         throw new Deno.errors.NotSupported('upstream, host and pathname must be defined');
     }
-    const needed = await isDownloadNeeded(details, ctx, force);
+    const needed = await isDownloadNeeded(details, ctx, force, needHash);
     const when = Date.now();
     const fileKey = getFilesKey(details.host, details.relative);
 
@@ -265,7 +303,7 @@ export async function downloadFile(
             };
         }
     }
-    if (details.is_readonly) {
+    if (details.is_readonly && hasPathname(ctx, details)) {
         const pathname = toPathname(ctx, details);
         try {
             await Deno.chmod(pathname, 0o444);
@@ -273,7 +311,7 @@ export async function downloadFile(
             // ignore failure
         }
     }
-    if (needHash) {
+    if (needHash && hasPathname(ctx, details)) {
         return await recalculateHashes(jreporter, ctx, details);
     }
     jreporter({
@@ -341,29 +379,29 @@ export async function downloadLiveFile(
     originalName: string,
     middleLength: number,
 ): Promise<ArchiveFileSummary> {
-    const filename = path.join(targetDir, liveFilename(originalName, 'download', middleLength));
+    const relative = path.join(targetDir, liveFilename(originalName, 'download', middleLength));
     if (!conventions.ctx.hosts[host] || !conventions.ctx.hosts[host].baseUrl) {
         throw new Deno.errors.NotSupported(`${host} is not defined in migration context`);
     }
-    const details = { host, upstream: sourceUrl.toString(), filename, url: sourceUrl };
+    const details = { host, upstream: sourceUrl.toString(), relative, url: sourceUrl };
     const info = await downloadFile(reporter, jreporter, conventions.ctx, details, true);
     if (middleLength === 0) {
-        jreporter({ operation: 'downloadLiveFile', filename });
+        jreporter({ operation: 'downloadLiveFile', relative });
         return info;
     }
     if ((info.status === 'complete') && (typeof info.sha256 === 'string')) {
         const finalName = path.join(targetDir, liveFilename(originalName, info.sha256, middleLength));
         const updated = { ...info };
-        updated.key = finalName;
+        updated.key = getFilesKey(host, relative);
         try {
             // a rename would keep the new file, we want to keep the old one
             await Deno.lstat(finalName);
             // if we make it here, we don't need the file we just downloaded
-            await Deno.remove(filename, { recursive: true });
+            await Deno.remove(relative, { recursive: true });
         } catch (_) {
             // (at least when the lstat was executed the file didn't exist, so rename)
             try {
-                await Deno.rename(filename, finalName);
+                await Deno.rename(relative, finalName);
                 jreporter({ operation: 'downloadLiveFile', finalName });
             } catch (_) {
                 // ignore second failure

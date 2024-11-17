@@ -177,10 +177,10 @@ export interface ThemeDetails extends Record<string, unknown> {
     versions?: Record<string, string>;
     template?: string;
     parent?: ThemeParent;
-    requires?: boolean | string;
-    requires_php?: boolean | string;
+    requires?: false | string;
+    requires_php?: false | string;
     is_commercial?: boolean;
-    external_support_url?: boolean | string;
+    external_support_url?: false | string;
     is_community?: boolean;
     external_repository_url?: string;
 }
@@ -226,9 +226,9 @@ export interface PluginDetails extends Record<string, unknown> {
     author?: string;
     author_profile?: string;
     contributors?: Record<string, ContributorInfo>;
-    requires?: string;
-    tested?: string;
-    requires_php?: boolean | string;
+    requires?: false | string;
+    tested?: false | string;
+    requires_php?: false | string;
     requires_plugins?: Array<string>;
     rating?: number;
     ratings?: Record<string, number>;
@@ -244,14 +244,16 @@ export interface PluginDetails extends Record<string, unknown> {
     download_link?: string;
     upgrade_notice?: Record<string, string>;
     screenshots?: Record<string, ScreenshotInfo>;
-    tags?: Record<string, string>;
+    tags?: Array<unknown> | Record<string, string>;
     versions?: Record<string, undefined | string>;
-    business_model?: boolean | string;
+    business_model?: false | 'commercial' | 'community';
     repository_url?: string;
     commercial_support_url?: string;
     donate_link?: string;
     banners?: Array<unknown> | BannersInfo;
     preview_link?: string;
+    icons?: Record<string, string>;
+    short_description?: string;
 }
 
 /*
