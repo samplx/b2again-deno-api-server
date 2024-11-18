@@ -131,13 +131,20 @@ async function fetchFile(
     const response = await fetch(details.upstream);
     if (!response.ok || !response.body) {
         await output.close();
+        const error = `${response.status} ${response.statusText}`;
         jreporter({
             operation: 'downloadFile',
             action: 'fetch',
             status: 'failed',
             sourceUrl: details.upstream,
             filename: pathname,
+            error,
         });
+        try {
+            await Deno.remove(pathname);
+        } catch (_) {
+            // ignore any errors
+        }
         return {
             key: filesKey,
             status: 'failed',
@@ -287,7 +294,7 @@ export async function downloadFile(
         try {
             return await fetchFile(jreporter, ctx, details);
         } catch (e) {
-            console.error(`Error: unable to save file: ${details.relative}`);
+            console.error(`Error: unable to save file: ${details.relative}`, e);
             jreporter({
                 operation: 'downloadFile',
                 action: 'fetch',
@@ -510,6 +517,7 @@ export async function downloadMetaLegacyJson<T extends Record<string, unknown>>(
             if (legacy.error) {
                 console.error(`downloadMetaLegacyJson: legacy.error: ${legacy.error}`);
                 reporter(`fetch failed: ${legacy.error}`);
+                await Deno.remove(legacyJson, { recursive: true });
                 jreporter({
                     operation: 'downloadMetaLegacyJson',
                     action: 'fetch',
@@ -744,6 +752,7 @@ export async function downloadMetaJson(
             const response = await fetchMetaJson(jsonFilename, url, spaces);
             if (response && (typeof response === 'object') && ('error' in response)) {
                 reporter(`fetch failed: ${response.error}`);
+                await Deno.remove(jsonFilename, { recursive: true });
                 jreporter({
                     operation: 'downloadMetaJson',
                     action: 'fetch',
