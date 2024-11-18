@@ -281,6 +281,18 @@ async function downloadRequestGroup(
     group: RequestGroup,
 ): Promise<boolean> {
     const groupStatus: ArchiveGroupStatus = await loadGroupStatus(conventions, group);
+    if (group.error) {
+        jreporter({
+            operation: 'downloadRequestGroup',
+            section: group.section,
+            slug: group.slug,
+            filename: group.statusFilename.relative,
+            is_complete: false,
+            skipped: false,
+            error: group.error,
+        });
+        return false;
+    }
     if (downloadIsComplete(options, group, groupStatus)) {
         jreporter({
             operation: 'downloadRequestGroup',
@@ -554,15 +566,34 @@ async function pluginsSection(
     conventions: StandardConventions,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const pluginLists = await getItemLists(reporter, jreporter, conventions, 'plugin');
-    await saveItemLists(reporter, jreporter, conventions, 'plugin', pluginLists);
+    let slugs: Array<string> = [];
+    if (options.list) {
+        const pluginLists = await getItemLists(reporter, jreporter, conventions, 'plugin');
+        await saveItemLists(reporter, jreporter, conventions, 'plugin', pluginLists);
+        slugs = getInUpdateOrder(pluginLists);
+    } else {
+        const effective = conventions.pluginSlugs.effective;
+        if (effective) {
+            const pathname = toPathname(conventions.ctx, effective(conventions.ctx));
+            slugs = await getInterestingSlugs(reporter, jreporter, pathname);
+        }
+    }
 
     let total = 0;
     let successful = 0;
     let failures = 0;
-    const slugs = getInUpdateOrder(pluginLists);
+    let unchanged = 0;
+    let action = 'complete';
+    const noChangeCount = parseInt(options.noChangeCount);
     for (const slug of slugs) {
         const group = await createPluginRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+        if (group.noChanges) {
+            unchanged += 1;
+            if ((unchanged > noChangeCount) && (noChangeCount !== 0)) {
+                action = 'no-change-count';
+                break;
+            }
+        }
         const ok = await downloadRequestGroup(options, conventions, group);
         if (ok) {
             successful += 1;
@@ -571,7 +602,7 @@ async function pluginsSection(
         }
         total += 1;
     }
-    jreporter({ operation: 'pluginsSection', action: 'complete', total, successful, failures });
+    jreporter({ operation: 'pluginsSection', action, total, successful, failures, unchanged });
 }
 
 /**
@@ -585,15 +616,34 @@ async function themesSection(
     conventions: StandardConventions,
     locales: ReadonlyArray<string>,
 ): Promise<void> {
-    const themeLists = await getItemLists(reporter, jreporter, conventions, 'theme');
-    await saveItemLists(reporter, jreporter, conventions, 'theme', themeLists);
+    let slugs: Array<string> = [];
+    if (options.list) {
+        const themeLists = await getItemLists(reporter, jreporter, conventions, 'theme');
+        await saveItemLists(reporter, jreporter, conventions, 'theme', themeLists);
+        slugs = getInUpdateOrder(themeLists);
+    } else {
+        const effective = conventions.themeSlugs.effective;
+        if (effective) {
+            const pathname = toPathname(conventions.ctx, effective(conventions.ctx));
+            slugs = await getInterestingSlugs(reporter, jreporter, pathname);
+        }
+    }
 
     let total = 0;
     let successful = 0;
     let failures = 0;
-    const slugs = getInUpdateOrder(themeLists);
+    let unchanged = 0;
+    let action = 'complete';
+    const noChangeCount = parseInt(options.noChangeCount);
     for (const slug of slugs) {
         const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+        if (group.noChanges) {
+            unchanged += 1;
+            if ((unchanged > noChangeCount) && (noChangeCount !== 0)) {
+                action = 'no-change-count';
+                break;
+            }
+        }
         const ok = await downloadRequestGroup(options, conventions, group);
         if (ok) {
             successful += 1;
@@ -602,9 +652,14 @@ async function themesSection(
         }
         total += 1;
     }
-    jreporter({ operation: 'themesSection', action: 'complete', total, successful, failures });
+    jreporter({ operation: 'themesSection', action, total, successful, failures, unchanged });
 }
 
+/**
+ * setup any S3 sinks. Each has an associated S3 Client and a temporary
+ * directory where in-transit files can live.
+ * @param conventions where to find things.
+ */
 async function setupS3Hosts(conventions: StandardConventions): Promise<void> {
     for (const host of Object.keys(conventions.ctx.hosts)) {
         const s3sink = conventions.ctx.hosts[host]?.s3sink;
@@ -615,6 +670,7 @@ async function setupS3Hosts(conventions: StandardConventions): Promise<void> {
 }
 
 /**
+ * the `pluperfect` download tool main program.
  * @param argv arguments passed after the `deno run -N pluperfect.ts`
  * @returns 0 if ok, 1 on error, 2 on usage errors.
  */

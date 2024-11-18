@@ -311,7 +311,7 @@ export function getInUpdateOrder(lists: ItemLists): Array<string> {
 }
 
 /**
- * Extract a list of themes from an HTML page.
+ * Extract a list of themes from files.
  * @param listUrl where to access the theme list
  * @returns list of theme slugs.
  */
@@ -421,7 +421,7 @@ export async function saveItemLists(
 }
 
 /**
- * Read a JSON w/comments file that contains an array of theme slugs.
+ * Read a JSON w/comments file that contains an array of item slugs.
  * @param filename name of file with either JSON w/comments array or
  *                 a simple list of slugs (with '#' comment lines).
  * @returns list of slugs.
@@ -442,6 +442,8 @@ export async function getInterestingSlugs(
                 for (let n = 0; n < jsonc.length; n++) {
                     if (typeof jsonc[n] === 'string') {
                         list.push(jsonc[n]);
+                    } else if ((typeof jsonc[n] === 'object') && ('slug' in jsonc[n])) {
+                        list.push(jsonc[n].slug);
                     }
                 }
             }

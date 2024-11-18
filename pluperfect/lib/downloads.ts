@@ -577,7 +577,21 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
         await Deno.lstat(legacyJson);
         await Deno.lstat(migratedJson);
     } catch (_) {
+        // jreporter({operation:'probeMetaLegacyJson', action: 'missing', legacyJson, migratedJson });
         const [legacy, migrated] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+        if (legacy.error) {
+            reporter(`fetch failed: ${legacy.error}`);
+        }
+        jreporter({
+            operation: 'probeMetaLegacyJson',
+            action: 'fetch',
+            host,
+            url: url.toString(),
+            migratedJson,
+            legacyJson,
+            error: legacy.error,
+        });
+
         return [true, legacy, migrated];
     }
 
@@ -595,12 +609,21 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
             for (let n = 0; n < tempContents.length; n++) {
                 same = same && (tempContents.at(n) === legacyContents.at(n));
                 if (!same) {
+                    console.error(`probe files differ at(${n}) ${tempContents.at(n)} !== ${legacyContents.at(n)}`);
                     break;
                 }
             }
         }
         if (same) {
             await Deno.remove(tempLegacy, { recursive: true });
+            jreporter({
+                operation: 'probeMetaLegacyJson',
+                action: 'same',
+                host,
+                url: url.toString(),
+                migratedJson,
+                legacyJson,
+            });
             return [false, legacy as T, migrated as T];
         }
         await Deno.remove(legacyJson, { recursive: true });
@@ -608,6 +631,15 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
         const newMigratedText = JSON.stringify(newMigrated, null, spaces);
         await Deno.writeTextFile(migratedJson, newMigratedText);
         await Deno.rename(tempLegacy, legacyJson);
+        jreporter({
+            operation: 'probeMetaLegacyJson',
+            action: 'updated',
+            host,
+            url: url.toString(),
+            migratedJson,
+            legacyJson,
+        });
+        return [true, tempJson as T, newMigrated as T];
     } catch (_) {
         // something failed during the upgrade process, so we will
         // just download the file again below
@@ -621,6 +653,15 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
         }
     }
     const [legacy, migrated] = await fetchMetaLegacyJson(legacyJson, migratedJson, url, spaces, migrate);
+    jreporter({
+        operation: 'probeMetaLegacyJson',
+        action: 'refetch',
+        host,
+        url: url.toString(),
+        migratedJson,
+        legacyJson,
+        error: legacy.error,
+    });
     return [true, legacy, migrated];
 }
 
