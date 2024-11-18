@@ -473,7 +473,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             liveMiddleLength: 20,
         },
         pluginVersionLimit: 10,
-        themeVersionLimit: 10,
+        themeVersionLimit: 0,
         jsonSpaces: '',
         releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
         legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
