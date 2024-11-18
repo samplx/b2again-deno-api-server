@@ -478,14 +478,14 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         releases: getCommonProvider('downloads', 'core', sourceName, 'releases.json'),
         legacyReleases: getCommonProvider('downloads', 'core', sourceName, `${sourceName}-releases.json`),
         // interestingReleases -- default to all releases -- can be json w/comments or slugs
-        interestingReleases: getCommonProvider('downloads', 'core', sourceName, `my-releases.jsonc`),
+        // interestingReleases: getCommonProvider('downloads', 'core', sourceName, `my-releases.jsonc`),
         // interestingLocales -- default to all locales -- can be json w/comments or slugs
         // interestingLocales: getCommonProvider('downloads', 'core', sourceName, `my-locales.jsonc`),
         pluginSlugs: {
             defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'plugins', sourceName, `featured-list.json`),
-            interesting: getCommonProvider('downloads', 'plugins', sourceName, `my-plugins.jsonc`),
+            interesting: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `my-plugins.jsonc`),
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
@@ -495,7 +495,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             defaults: getCommonProvider('downloads', 'themes', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'themes', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'themes', sourceName, `featured-list.json`),
-            interesting: getCommonProvider('downloads', 'themes', sourceName, `my-themes.jsonc`),
+            interesting: undefined, // getCommonProvider('downloads', 'themes', sourceName, `my-themes.jsonc`),
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),
