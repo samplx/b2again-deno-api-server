@@ -26,6 +26,5 @@ Real soon now, the repo will include:
 - [winchell](./winchell/README.md) - reports on everything.
 - [demattic](./demattic/README.md) - automattion of a rebranding fork
 - docs - some documentation
-- podman - Dockerfiles for b2again development
 - lib - common code
 - icons - shared visual assets

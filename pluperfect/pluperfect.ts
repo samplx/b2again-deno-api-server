@@ -28,6 +28,7 @@ import {
 import { type CommandOptions, getParseOptions, printHelp } from './lib/options.ts';
 import getStandardConventions from '../lib/b2again-conventions.ts';
 import {
+CommonUrlProvider,
 hasPathname,
 toPathname,
     type ArchiveGroupName,
@@ -48,6 +49,7 @@ import type { TranslationEntry, TranslationsResultV1_0 } from '../lib/api.ts';
 import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 import { s3Cleanup, s3Setup } from './lib/s3files.ts';
 import { load } from 'jsr:@std/dotenv';
+import { escape } from "jsr:@std/regexp";
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -70,6 +72,18 @@ let jreporter: JsonReporter = DISABLED_JSON_REPORTER;
  */
 const parseOptions: ParseOptions = getParseOptions();
 
+/**
+ * a simple map of URL's that 404.
+ */
+interface MissingMap {
+    [slug: string]: true;
+}
+
+/**
+ * a collection of requests associated with a single upstream "item".
+ * either a core release, or a pattern, a plugin or a theme.
+ * includes all of the readOnly (zip), meta data, l10n, and live files.
+ */
 export interface RequestGroup {
     /**
      * which source is active.
@@ -83,7 +97,7 @@ export interface RequestGroup {
     section: ArchiveGroupName;
 
     /**
-     * group id.
+     * group item id.
      */
     slug: string;
 
@@ -205,6 +219,31 @@ export function migrateRatings(ratings: Record<string, number>): Record<string, 
 }
 
 /**
+ * migrate the URL text from old to new.
+ * @param previous list of previous url values as strings
+ * @param updated updated list of the same urls
+ * @param input sections portion
+ * @returns sections with any URL values updated.
+ */
+export function migrateSectionUrls(
+    previous: Array<string>,
+    updated: Array<string>,
+    input: Record<string, string | undefined>
+): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const key of Object.keys(input)) {
+        let contents = input[key] ?? '';
+        for (let n=0; (n < previous.length) && (n < updated.length); n++) {
+            const search = new RegExp(escape(previous[n]), 'g');
+            const replacement = updated[n];
+            contents = contents.replaceAll(search, replacement);
+        }
+        result[key] = contents;
+    }
+    return result;
+}
+
+/**
  * Verify process has permissions needed.
  * @param conventions standard location of resources.
  * @returns 1 on failure, 0 if permissions exist.
@@ -279,6 +318,7 @@ async function downloadRequestGroup(
     options: CommandOptions,
     conventions: StandardConventions,
     group: RequestGroup,
+    missing: MissingMap,
 ): Promise<boolean> {
     const groupStatus: ArchiveGroupStatus = await loadGroupStatus(conventions, group);
     if (group.error) {
@@ -308,7 +348,8 @@ async function downloadRequestGroup(
     let ok = true;
     const filtered = group.requests.filter((item) =>
         item.upstream && item.relative && item.host &&
-        (options.force || options.rehash || (groupStatus.files[getFilesKey(item.host, item.relative)]?.status !== 'complete'))
+        (options.force || options.rehash || (groupStatus.files[getFilesKey(item.host, item.relative)]?.status !== 'complete') &&
+        !missing[item.upstream])
     );
 
     jreporter({
@@ -476,6 +517,12 @@ async function getListOfLocales(
     return [];
 }
 
+/**
+ * determine which core releases should be processed.
+ * @param options command-line options.
+ * @param conventions where to find resources.
+ * @returns list of core releases to be processed. may be empty.
+ */
 async function getListOfReleases(
     options: CommandOptions,
     conventions: StandardConventions,
@@ -490,6 +537,27 @@ async function getListOfReleases(
         return releases;
     }
     return await loadInterestingReleases(reporter, jreporter, conventions);
+}
+
+/**
+ * create a map of missing URL's.
+ * @param conventions where to find resources.
+ * @param provider how to get the missing slugs filename.
+ * @returns map of URL's that will 404 to `true`.
+ */
+async function getMissingMap(
+    conventions: StandardConventions,
+    provider: undefined | CommonUrlProvider,
+): Promise<MissingMap> {
+    let missingList: Array<string> = [];
+    if (provider && hasPathname(conventions.ctx, provider(conventions.ctx))) {
+        missingList = await getInterestingSlugs(reporter, jreporter, toPathname(conventions.ctx, provider(conventions.ctx)));
+    }
+    const missingMap: MissingMap = {};
+    for (const item of missingList) {
+        missingMap[item] = true;
+    }
+    return missingMap;
 }
 
 /**
@@ -509,9 +577,10 @@ async function coreSection(
         let total = 0;
         let successful = 0;
         let failures = 0;
+        const missingMap: MissingMap = await getMissingMap(conventions, conventions.missingCore);
         for (const release of releases) {
             const group = await createCoreRequestGroup(reporter, jreporter, options, conventions, locales, release);
-            const ok = await downloadRequestGroup(options, conventions, group);
+            const ok = await downloadRequestGroup(options, conventions, group, missingMap);
             if (ok) {
                 successful += 1;
             } else {
@@ -530,30 +599,17 @@ async function coreSection(
  * @param conventions how to get resources.
  * @param locales  list of locales we care about.
  */
-async function patternsSection(
-    options: CommandOptions,
-    conventions: StandardConventions,
-    locales: ReadonlyArray<string>,
-): Promise<void> {
-    // const themeLists = await getItemLists(reporter, jreporter, conventions, 'theme');
-    // await saveItemLists(reporter, jreporter, conventions, options, 'theme', themeLists);
+// async function patternsSection(
+//     options: CommandOptions,
+//     conventions: StandardConventions,
+//     locales: ReadonlyArray<string>,
+// ): Promise<void> {
 
-    let total = 0;
-    let successful = 0;
-    let failures = 0;
-    // const slugs = getInUpdateOrder(themeLists);
-    // for (const slug of slugs) {
-    //     const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug);
-    //     const ok = await downloadRequestGroup(options, conventions, group);
-    //     if (ok) {
-    //         successful += 1;
-    //     } else {
-    //         failures += 1;
-    //     }
-    //     total += 1;
-    // }
-    jreporter({ operation: 'patternsSection', action: 'complete', total, successful, failures });
-}
+//     let total = 0;
+//     let successful = 0;
+//     let failures = 0;
+//     jreporter({ operation: 'patternsSection', action: 'complete', total, successful, failures });
+// }
 
 /**
  * handle the download of plugins and the associated files.
@@ -585,6 +641,7 @@ async function pluginsSection(
     let unchanged = 0;
     let action = 'complete';
     const noChangeCount = parseInt(options.noChangeCount);
+    const missingMap: MissingMap = await getMissingMap(conventions, conventions.pluginSlugs.missing);
     for (const slug of slugs) {
         const group = await createPluginRequestGroup(reporter, jreporter, options, conventions, locales, slug);
         if (group.noChanges) {
@@ -594,7 +651,7 @@ async function pluginsSection(
                 break;
             }
         }
-        const ok = await downloadRequestGroup(options, conventions, group);
+        const ok = await downloadRequestGroup(options, conventions, group, missingMap);
         if (ok) {
             successful += 1;
         } else {
@@ -635,6 +692,7 @@ async function themesSection(
     let unchanged = 0;
     let action = 'complete';
     const noChangeCount = parseInt(options.noChangeCount);
+    const missingMap: MissingMap = await getMissingMap(conventions, conventions.themeSlugs.missing);
     for (const slug of slugs) {
         const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug);
         if (group.noChanges) {
@@ -644,7 +702,7 @@ async function themesSection(
                 break;
             }
         }
-        const ok = await downloadRequestGroup(options, conventions, group);
+        const ok = await downloadRequestGroup(options, conventions, group, missingMap);
         if (ok) {
             successful += 1;
         } else {

@@ -82,6 +82,7 @@ export const META_LIST_SLUG_VALUES = [
     'effective',
     'featured',
     'interesting',
+    'missing',
     'new',
     'popular',
     'rejected',
@@ -386,6 +387,11 @@ export interface StandardConventions {
      * optional slugs filename containing the locales to keep.
      */
     interestingLocales?: CommonUrlProvider;
+
+    /**
+     * optional slugs filename containing core file URL's that will 404
+     */
+    missingCore?: CommonUrlProvider;
 
     /**
      * plugin slug list filenames. either `interesting` or

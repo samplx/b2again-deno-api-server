@@ -23,7 +23,7 @@ import {
 } from '../../lib/migration.ts';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { type MigrationContext, type StandardConventions, toPathname } from '../../lib/standards.ts';
-import { filterTranslations, getTranslationMigration, migrateRatings, recentVersions, type RequestGroup } from '../pluperfect.ts';
+import { filterTranslations, getTranslationMigration, migrateRatings, migrateSectionUrls, recentVersions, type RequestGroup } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
 
@@ -162,7 +162,15 @@ function getThemeMigrator(
         }
         const provider = getThemeMigratorProvider(conventions, slug, original.version);
         const migrated = migrateStructure(provider, conventions.ctx, original);
-        // FIXME: handle cross-field migration (urls in text fields)
+        if (migrated.sections) {
+            const originals: Array<string> = [];
+            const updated: Array<string> = [];
+            if (original.screenshot_url && migrated.screenshot_url) {
+                originals.push(original.screenshot_url)
+                updated.push(migrated.screenshot_url);
+            }
+            migrated.sections = migrateSectionUrls(originals, updated, migrated.sections)
+        }
         return migrated;
     };
 }

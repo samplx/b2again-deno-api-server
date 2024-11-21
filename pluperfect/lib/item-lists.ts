@@ -166,6 +166,16 @@ async function getUnlimitedItemList(
         }
         return [];
     }
+    if (kind === 'missing') {
+        const missing = conventions[`${itemType}Slugs`].missing;
+        if (missing) {
+            const details = missing(conventions.ctx);
+            if (hasPathname(conventions.ctx, details)) {
+                return await getInterestingItems(reporter, jreporter, toPathname(conventions.ctx, details));
+            }
+        }
+        return [];
+    }
     if (kind === 'effective') {
         return [];
     }
@@ -327,6 +337,7 @@ export async function getItemLists(
     let popular: Array<ItemType> = [];
     let interesting: Array<ItemType> = [];
     let rejected: Array<ItemType> = [];
+    let missing: Array<ItemType> = [];
     let updated: Array<ItemType> = [];
     let effective: Array<ItemType>;
 
@@ -361,6 +372,10 @@ export async function getItemLists(
         rejected = await getItemList(reporter, jreporter, locations, itemType, 'rejected');
         rejected = listUnique(rejected);
     }
+    if (locations[`${itemType}Slugs`].missing) {
+        missing = await getItemList(reporter, jreporter, locations, itemType, 'missing');
+        missing = listUnique(missing);
+    }
     if (interesting.length > 0) {
         defaults = listIntersection(interesting, defaults);
         featured = listIntersection(interesting, featured);
@@ -378,6 +393,7 @@ export async function getItemLists(
         effective,
         featured,
         interesting,
+        missing,
         'new': introduced,
         popular,
         updated,
@@ -405,7 +421,7 @@ export async function saveItemLists(
         [Property in MetaListSlug]?: CommonUrlProvider;
     };
     for (const root of META_LIST_SLUG_VALUES) {
-        if (perItem[root] && lists[root] && (root !== 'interesting') && (root !== 'rejected')) {
+        if (perItem[root] && lists[root] && (root !== 'interesting') && (root !== 'missing') && (root !== 'rejected')) {
             const details = perItem[root](conventions.ctx);
             if (hasPathname(conventions.ctx, details)) {
                 const text = JSON.stringify(lists[root], null, conventions.jsonSpaces);

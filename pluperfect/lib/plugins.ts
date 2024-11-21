@@ -23,7 +23,7 @@ import {
 } from '../../lib/migration.ts';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { type MigrationContext, type StandardConventions, toPathname } from '../../lib/standards.ts';
-import { filterTranslations, getTranslationMigration, migrateRatings, recentVersions, type RequestGroup } from '../pluperfect.ts';
+import { filterTranslations, getTranslationMigration, migrateRatings, migrateSectionUrls, recentVersions, type RequestGroup } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
 
@@ -196,11 +196,21 @@ function getPluginMigrator(
 ): (original: PluginDetails) => PluginDetails {
     return function (original: PluginDetails): PluginDetails {
         if (!original.version) {
-            throw new Deno.errors.NotSupported(`theme.version is not defined`);
+            throw new Deno.errors.NotSupported(`plugin.version is not defined`);
         }
         const provider = getPluginMigratorProvider(conventions, slug, original.version);
         const migrated = migrateStructure(provider, conventions.ctx, original);
-        // FIXME: handle cross-field migration (urls in text fields)
+        if (migrated.sections && migrated.screenshots && original.screenshots) {
+            const originals: Array<string> = [];
+            const updated: Array<string> = [];
+            for (const key of Object.keys(original.screenshots)) {
+                if (original.screenshots[key].src && migrated.screenshots[key].src) {
+                    originals.push(original.screenshots[key].src)
+                    updated.push(migrated.screenshots[key].src);
+                }
+            }
+            migrated.sections = migrateSectionUrls(originals, updated, migrated.sections)
+        }
         return migrated;
     };
 }

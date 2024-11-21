@@ -106,7 +106,8 @@ async function fetchFile(
         if (!targetDir) {
             throw new Deno.errors.BadResource(`temporary directory for s3sink ${s3sink} must be defined`);
         }
-        pathname = path.join(targetDir, path.basename(details.relative));
+        const fetchDir = await Deno.makeTempDir({ dir: targetDir });
+        pathname = path.join(fetchDir, path.basename(details.relative));
     } else {
         pathname = toPathname(ctx, details);
         targetDir = path.dirname(pathname);
@@ -141,7 +142,7 @@ async function fetchFile(
             error,
         });
         try {
-            await Deno.remove(pathname);
+            await Deno.remove(path.dirname(pathname), { recursive: true });
         } catch (_) {
             // ignore any errors
         }
@@ -168,6 +169,11 @@ async function fetchFile(
     if (s3sink) {
         jreporter({ operation: 's3FileMove', s3sink, pathname, destination: details.relative });
         await s3FileMove(s3sink, pathname, details.relative);
+        try {
+            await Deno.remove(path.dirname(pathname), { recursive: true });
+        } catch (_) {
+            // ignore any errors
+        }
     }
     return {
         key: filesKey,

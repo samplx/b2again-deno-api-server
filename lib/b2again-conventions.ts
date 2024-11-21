@@ -457,9 +457,6 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
                     baseDirectory: DOWNLOADS_BASE_DIRECTORY,
                     s3sink: 'r2downloads',
                 },
-                support: {
-                    baseUrl: 'https://support.b2again.org/',
-                },
                 www: {
                     baseUrl: 'https://www.b2again.org/',
                 },
@@ -481,11 +478,14 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         // interestingReleases: getCommonProvider('downloads', 'core', sourceName, `my-releases.jsonc`),
         // interestingLocales -- default to all locales -- can be json w/comments or slugs
         // interestingLocales: getCommonProvider('downloads', 'core', sourceName, `my-locales.jsonc`),
+        // missingCore -- url's to ignore since they 404
+        // missingCore: getCommonProvider('downloads', 'core', sourceName, 'core-404.jsonc'),
         pluginSlugs: {
             defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'plugins', sourceName, `featured-list.json`),
             interesting: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `my-plugins.jsonc`),
+            missing: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `plugins-404.jsonc`),
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
@@ -496,6 +496,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             effective: getCommonProvider('downloads', 'themes', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'themes', sourceName, `featured-list.json`),
             interesting: undefined, // getCommonProvider('downloads', 'themes', sourceName, `my-themes.jsonc`),
+            missing: undefined, // getCommonProvider('downloads', 'themes', sourceName, `themes-404.jsonc`),
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),
