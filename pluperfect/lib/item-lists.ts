@@ -464,7 +464,7 @@ export async function getInterestingSlugs(
                 }
             }
             reporter(`getInterestingSlugs: ${filename} as JSON w/comments`);
-            jreporter({ operation: 'getInterestingSlugs', format: 'jsonc', size: list.length });
+            jreporter({ operation: 'getInterestingSlugs', filename, format: 'jsonc', size: list.length });
             return list;
         } catch (_) {
             // couldn't parse the file, assume it is a list of slugs
@@ -474,12 +474,12 @@ export async function getInterestingSlugs(
                 return (trim.length > 0) && !trim.startsWith('#');
             });
             reporter(`getInterestingSlugs: ${filename} as slugs`);
-            jreporter({ operation: 'getInterestingSlugs', format: 'slugs', size: filtered.length });
+            jreporter({ operation: 'getInterestingSlugs', filename, format: 'slugs', size: filtered.length });
             return filtered;
         }
     } catch (e) {
         console.error(`Error: unable to read file: ${filename} error: ${e}`);
-        jreporter({ operation: 'getInterestingSlugs', format: 'unknown', error: e });
+        jreporter({ operation: 'getInterestingSlugs', filename, format: 'unknown', error: e });
         return [];
     }
 }
