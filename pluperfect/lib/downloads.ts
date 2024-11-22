@@ -618,8 +618,8 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
         const tempJson = await downloadMetaJson(reporter, jreporter, host, tempLegacy, url, true, spaces);
         const tempContents = await Deno.readFile(tempLegacy);
         const legacyContents = await Deno.readFile(legacyJson);
-        let same = true;
-        if (tempContents.length === legacyContents.length) {
+        let same = (tempContents.length === legacyContents.length);
+        if (same) {
             for (let n = 0; n < tempContents.length; n++) {
                 same = same && (tempContents.at(n) === legacyContents.at(n));
                 if (!same) {
