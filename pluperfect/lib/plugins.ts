@@ -23,7 +23,14 @@ import {
 } from '../../lib/migration.ts';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { type MigrationContext, type StandardConventions, toPathname } from '../../lib/standards.ts';
-import { filterTranslations, getTranslationMigration, migrateRatings, migrateSectionUrls, recentVersions, type RequestGroup } from '../pluperfect.ts';
+import {
+    filterTranslations,
+    getTranslationMigration,
+    migrateRatings,
+    migrateSectionUrls,
+    recentVersions,
+    type RequestGroup,
+} from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
 
@@ -205,11 +212,11 @@ function getPluginMigrator(
             const updated: Array<string> = [];
             for (const key of Object.keys(original.screenshots)) {
                 if (original.screenshots[key].src && migrated.screenshots[key].src) {
-                    originals.push(original.screenshots[key].src)
+                    originals.push(original.screenshots[key].src);
                     updated.push(migrated.screenshots[key].src);
                 }
             }
-            migrated.sections = migrateSectionUrls(originals, updated, migrated.sections)
+            migrated.sections = migrateSectionUrls(originals, updated, migrated.sections);
         }
         return migrated;
     };

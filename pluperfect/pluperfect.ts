@@ -28,13 +28,13 @@ import {
 import { type CommandOptions, getParseOptions, printHelp } from './lib/options.ts';
 import getStandardConventions from '../lib/b2again-conventions.ts';
 import {
-CommonUrlProvider,
-hasPathname,
-toPathname,
     type ArchiveGroupName,
+    CommonUrlProvider,
+    hasPathname,
     type LiveUrlProviderResult,
     type MigrationContext,
     type StandardConventions,
+    toPathname,
     type UrlProviderResult,
     type VersionLocaleVersionUrlProvider,
 } from '../lib/standards.ts';
@@ -49,7 +49,7 @@ import type { TranslationEntry, TranslationsResultV1_0 } from '../lib/api.ts';
 import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 import { s3Cleanup, s3Setup } from './lib/s3files.ts';
 import { load } from 'jsr:@std/dotenv';
-import { escape } from "jsr:@std/regexp";
+import { escape } from 'jsr:@std/regexp';
 
 /** how the script describes itself. */
 const PROGRAM_NAME: string = 'pluperfect';
@@ -228,12 +228,12 @@ export function migrateRatings(ratings: Record<string, number>): Record<string, 
 export function migrateSectionUrls(
     previous: Array<string>,
     updated: Array<string>,
-    input: Record<string, string | undefined>
+    input: Record<string, string | undefined>,
 ): Record<string, string> {
     const result: Record<string, string> = {};
     for (const key of Object.keys(input)) {
         let contents = input[key] ?? '';
-        for (let n=0; (n < previous.length) && (n < updated.length); n++) {
+        for (let n = 0; (n < previous.length) && (n < updated.length); n++) {
             const search = new RegExp(escape(previous[n]), 'g');
             const replacement = updated[n];
             contents = contents.replaceAll(search, replacement);
@@ -349,7 +349,7 @@ async function downloadRequestGroup(
     const filtered = group.requests.filter((item) =>
         item.upstream && item.relative && item.host &&
         (options.force || options.rehash || (groupStatus.files[getFilesKey(item.host, item.relative)]?.status !== 'complete') &&
-        !missing[item.upstream])
+                !missing[item.upstream])
     );
 
     jreporter({
@@ -440,7 +440,7 @@ function downloadIsComplete(
 async function saveGroupStatus(
     conventions: StandardConventions,
     group: RequestGroup,
-    groupStatus: ArchiveGroupStatus
+    groupStatus: ArchiveGroupStatus,
 ): Promise<void> {
     if (!group.statusFilename.relative || !group.statusFilename.host) {
         throw new Deno.errors.BadResource(`group.statusFilename.relative and group.statusFilename.host must be defined`);
@@ -591,7 +591,6 @@ async function coreSection(
         jreporter({ operation: 'coreSection', action: 'complete', total, successful, failures });
     }
 }
-
 
 /**
  * handle the download of the editor patterns and associated files.

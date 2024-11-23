@@ -212,8 +212,8 @@ export interface ScreenshotInfo {
  * a normally 'null' value comes accross as a `false` value.
  */
 export interface BannersInfo {
-    low?: boolean | string;
-    high?: boolean | string;
+    low?: false | string;
+    high?: false | string;
 }
 
 /**

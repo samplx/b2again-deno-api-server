@@ -561,7 +561,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         ),
         pluginZip: getSlugVersionOriginalUrlProvider('downloads', 'plugins', sourceName),
         pluginL10nZip: getSlugVersionLocaleUrlProvider(DOWNLOADS_HOST, 'downloads', 'plugins', sourceName),
-        pluginSupport: getCommonProvider('www', 'plugins', sourceName, 'support.html', ''),
+        pluginSupport: getCommonProvider('www', 'plugins', sourceName, 'support/index.html', ''),
         pluginHomepage: getSlugUrlProvider('www', 'plugins', sourceName, ''),
         pluginScreenshot: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'screenshots'),
         pluginIcon: getSlugOriginalLiveUrlProvider('downloads', 'plugins', sourceName, 'icons'),
@@ -584,6 +584,6 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         themeHomepage: getSlugUrlProvider('www', 'themes', sourceName, ''),
         themeScreenshot: getSlugOriginalLiveUrlProvider('downloads', 'themes', sourceName, 'screenshots'),
         themePreview: getSlugLiveIndexUrlProvider('downloads', 'themes', sourceName, 'preview'),
-        themeReviews: getCommonProvider('www', 'themes', sourceName, 'reviews.html', ''),
+        themeReviews: getCommonProvider('www', 'themes', sourceName, 'reviews/index.html', ''),
     };
 }

@@ -50,7 +50,7 @@ async function isDownloadNeeded(
     details: UrlProviderResult,
     ctx: MigrationContext,
     force: boolean,
-    needHash: boolean
+    needHash: boolean,
 ): Promise<boolean> {
     // if we don't keep a local copy, we don't download one.
     if (!hasPathname(ctx, details)) {
@@ -618,12 +618,12 @@ export async function probeMetaLegacyJson<T extends Record<string, unknown>>(
         const tempJson = await downloadMetaJson(reporter, jreporter, host, tempLegacy, url, true, spaces);
         const tempContents = await Deno.readFile(tempLegacy);
         const legacyContents = await Deno.readFile(legacyJson);
-        let same = (tempContents.length === legacyContents.length);
+        let same = tempContents.length === legacyContents.length;
         if (same) {
             for (let n = 0; n < tempContents.length; n++) {
                 same = same && (tempContents.at(n) === legacyContents.at(n));
                 if (!same) {
-                    console.error(`probe files differ at(${n}) ${tempContents.at(n)} !== ${legacyContents.at(n)}`);
+                    // console.error(`probe files differ at(${n}) ${tempContents.at(n)} !== ${legacyContents.at(n)}`);
                     break;
                 }
             }

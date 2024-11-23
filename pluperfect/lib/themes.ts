@@ -23,7 +23,14 @@ import {
 } from '../../lib/migration.ts';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { type MigrationContext, type StandardConventions, toPathname } from '../../lib/standards.ts';
-import { filterTranslations, getTranslationMigration, migrateRatings, migrateSectionUrls, recentVersions, type RequestGroup } from '../pluperfect.ts';
+import {
+    filterTranslations,
+    getTranslationMigration,
+    migrateRatings,
+    migrateSectionUrls,
+    recentVersions,
+    type RequestGroup,
+} from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
 
@@ -166,10 +173,10 @@ function getThemeMigrator(
             const originals: Array<string> = [];
             const updated: Array<string> = [];
             if (original.screenshot_url && migrated.screenshot_url) {
-                originals.push(original.screenshot_url)
+                originals.push(original.screenshot_url);
                 updated.push(migrated.screenshot_url);
             }
-            migrated.sections = migrateSectionUrls(originals, updated, migrated.sections)
+            migrated.sections = migrateSectionUrls(originals, updated, migrated.sections);
         }
         return migrated;
     };
@@ -261,7 +268,16 @@ export async function createThemeRequestGroup(
                 // since themes timestamps are largely absent, we always reload the current version's translations
                 // unless the theme.json file did not change at all.
                 const outdated = changed && ((typeof themeInfo.version === 'string') && (themeInfo.version === version));
-                const details = await getThemeTranslations(reporter, jreporter, conventions, options, slug, version, outdated, locales);
+                const details = await getThemeTranslations(
+                    reporter,
+                    jreporter,
+                    conventions,
+                    options,
+                    slug,
+                    version,
+                    outdated,
+                    locales,
+                );
                 if (details && Array.isArray(details.translations) && (details.translations.length > 0)) {
                     for (const item of details.translations) {
                         if (options.readOnly && (item.version === version)) {

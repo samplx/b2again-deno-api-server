@@ -16,7 +16,13 @@
 import type { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
 import type { CommandOptions } from './options.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import { hasPathname, type LiveUrlProviderResult, type StandardConventions, toPathname, type UrlProviderResult } from '../../lib/standards.ts';
+import {
+    hasPathname,
+    type LiveUrlProviderResult,
+    type StandardConventions,
+    toPathname,
+    type UrlProviderResult,
+} from '../../lib/standards.ts';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { getInterestingSlugs } from './item-lists.ts';
 import { filterTranslations, getTranslationMigration, type RequestGroup } from '../pluperfect.ts';

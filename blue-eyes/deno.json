@@ -1,7 +1,7 @@
 {
     "name": "@b2again/blue-eyes",
     "version": "0.2.0",
-    "exports":"./blue-eyes.ts",
+    "exports": "./blue-eyes.ts",
     "tasks": {
         "dev": "deno serve --watch -R -E -N blue-eyes.ts"
     },

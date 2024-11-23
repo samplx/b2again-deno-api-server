@@ -83,7 +83,7 @@ class Sink {
 
     async copyFile(source: string, key: string): Promise<void> {
         using fp = await Deno.open(source, { read: true });
-        const contentType = (key.endsWith('.json') ? 'application/json' : 'application/octet-stream');
+        const contentType = key.endsWith('.json') ? 'application/json' : 'application/octet-stream';
         await this.client.putObject(key, fp.readable, {
             metadata: {
                 'Content-Type': contentType,
@@ -112,14 +112,14 @@ export async function s3Cleanup(): Promise<void> {
 
 export async function s3ObjectDelete(s3sink: string, pathname: string): Promise<void> {
     if (s3sink in sinks) {
-        const noslash = (pathname.startsWith('/') ? pathname.substring(1) : pathname);
+        const noslash = pathname.startsWith('/') ? pathname.substring(1) : pathname;
         await sinks[s3sink].deleteObject(noslash);
     }
 }
 
 export async function s3ObjectExists(s3sink: string, pathname: string): Promise<boolean> {
     if (s3sink in sinks) {
-        const noslash = (pathname.startsWith('/') ? pathname.substring(1) : pathname);
+        const noslash = pathname.startsWith('/') ? pathname.substring(1) : pathname;
         return await sinks[s3sink].exists(noslash);
     }
     return false;
@@ -127,7 +127,7 @@ export async function s3ObjectExists(s3sink: string, pathname: string): Promise<
 
 export async function s3FileMove(s3sink: string, source: string, destination: string): Promise<void> {
     if (s3sink in sinks) {
-        const noslash = (destination.startsWith('/') ? destination.substring(1) : destination);
+        const noslash = destination.startsWith('/') ? destination.substring(1) : destination;
         await sinks[s3sink].copyFile(source, noslash);
         await Deno.remove(source, { recursive: true });
     }
@@ -135,7 +135,7 @@ export async function s3FileMove(s3sink: string, source: string, destination: st
 
 export async function s3FileCopy(s3sink: string, source: string, destination: string): Promise<void> {
     if (s3sink in sinks) {
-        const noslash = (destination.startsWith('/') ? destination.substring(1) : destination);
+        const noslash = destination.startsWith('/') ? destination.substring(1) : destination;
         await sinks[s3sink].copyFile(source, noslash);
     }
 }

@@ -56,7 +56,7 @@ export function isValidArchiveGroupName(name: string): boolean {
 /**
  * names of different source repositories.
  */
-export const ARCHIVE_SOURCE_NAMES = [ 'legacy' ] as const;
+export const ARCHIVE_SOURCE_NAMES = ['legacy'] as const;
 
 /**
  * the source names as a type.
