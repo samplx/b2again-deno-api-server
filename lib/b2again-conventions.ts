@@ -243,7 +243,7 @@ function getSlugOriginalLiveUrlProvider(
     return function (ctx: MigrationContext, slug: string, upstream: string): LiveUrlProviderResult {
         const url = new URL(upstream);
         url.search = '';
-        const filename = path.basename(url.pathname);
+        const filename = path.basename(decodeURIComponent(url.pathname));
         const split = splitDirname(ctx, section, slug);
         const dirname = `${groupName}/${section}/${sourceName}/${split}/${fileType}`;
         return {
@@ -484,7 +484,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             missing: getCommonProvider('downloads', 'plugins', sourceName, `plugins-404.jsonc`),
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
-            rejected: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
+            // rejected: getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
             updated: getCommonProvider('downloads', 'plugins', sourceName, `updated-list.json`),
         },
         themeSlugs: {
@@ -495,7 +495,7 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             missing: getCommonProvider('downloads', 'themes', sourceName, `themes-404.jsonc`),
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
-            rejected: undefined, // getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),
+            // rejected: getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),
             updated: getCommonProvider('downloads', 'themes', sourceName, `updated-list.json`),
         },
 
