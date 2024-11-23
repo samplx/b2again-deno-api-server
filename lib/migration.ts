@@ -77,7 +77,7 @@ export function getLiveUrlFromProvider(ctx: MigrationContext, p: LiveUrlProvider
         console.log(JSON.stringify(ctx.hosts, null, '    '));
         throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
     }
-    return new URL(`${p.dirname}/${p.front}${p.extension}`, ctx.hosts[p.host].baseUrl).toString();
+    return new URL(`${p.dirname}/${p.filename}`, ctx.hosts[p.host].baseUrl).toString();
 }
 
 /**

@@ -218,14 +218,14 @@ export interface LiveUrlProviderResult {
     readonly dirname: string;
 
     /**
-     * main part of the filename (before the last dot).
+     * main part of the filename.
      */
-    readonly front: string;
+    readonly filename: string;
 
     /**
-     * file name extension (without the dot)
+     * upstream version of the resource.
      */
-    readonly extension: string;
+    readonly upstream: string;
 }
 
 /**

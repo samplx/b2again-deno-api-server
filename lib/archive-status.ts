@@ -57,6 +57,13 @@ export interface ArchiveFileSummary {
 }
 
 /**
+ * Describes a live file.
+ */
+export interface LiveFileSummary extends ArchiveFileSummary {
+    generation?: number;
+}
+
+/**
  * Describes a group of downloaded files.
  */
 export interface ArchiveGroupStatus {
@@ -85,14 +92,22 @@ export interface ArchiveGroupStatus {
      */
     updated?: string;
     /**
-     * hash map of key=filename, value = file information
+     * hash map of key=host:filename, value = file information for archive files.
      */
     files: Record<string, ArchiveFileSummary>;
+    /**
+     * the next generation of live resource.
+     */
+    next_generation?: number;
+    /**
+     * hash map of key=host:filename, value = file information for live files.
+     */
+    live?: Record<string, LiveFileSummary>;
 }
 
 /**
- * Summary of information about a group, we remove the bulky `files` field.
+ * Summary of information about a group, we remove the bulky `files` and `live` fields.
  */
 export type ArchiveGroupSummary = {
-    [Property in keyof ArchiveGroupStatus as Exclude<Property, 'files'>]: ArchiveGroupStatus;
+    [Property in keyof ArchiveGroupStatus as Exclude<Property, 'live' | 'files'>]: ArchiveGroupStatus;
 };

@@ -16,16 +16,10 @@
 import type { ReleaseStatus, TranslationsResultV1_0 } from '../../lib/api.ts';
 import type { CommandOptions } from './options.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
-import {
-    hasPathname,
-    type LiveUrlProviderResult,
-    type StandardConventions,
-    toPathname,
-    type UrlProviderResult,
-} from '../../lib/standards.ts';
+import { hasPathname, type StandardConventions, toPathname, type UrlProviderResult } from '../../lib/standards.ts';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import { getInterestingSlugs } from './item-lists.ts';
-import { filterTranslations, getTranslationMigration, type RequestGroup } from '../pluperfect.ts';
+import { filterTranslations, getTranslationMigration, type LiveUrlRequest, type RequestGroup } from '../pluperfect.ts';
 import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 
 /**
@@ -283,7 +277,7 @@ export async function createCoreRequestGroup(
     release: string,
 ): Promise<RequestGroup> {
     const requests: Array<UrlProviderResult> = [];
-    const liveRequests: Array<LiveUrlProviderResult> = [];
+    const liveRequests: Array<LiveUrlRequest<Record<string, unknown>>> = [];
 
     // 12 core archive files per release - 4 groups of 3
     // 2 groups are required .zip and .tar.gz

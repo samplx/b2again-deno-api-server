@@ -40,7 +40,7 @@ import {
 } from '../lib/standards.ts';
 import { createCoreRequestGroup, getCoreReleases, loadInterestingReleases, loadListOfReleases } from './lib/core.ts';
 import { getInterestingSlugs, getInUpdateOrder, getItemLists, saveItemLists } from './lib/item-lists.ts';
-import { downloadFile } from './lib/downloads.ts';
+import { downloadFile, downloadLiveFile } from './lib/downloads.ts';
 import type { ArchiveGroupStatus } from '../lib/archive-status.ts';
 import * as path from 'jsr:@std/path';
 import { createThemeRequestGroup } from './lib/themes.ts';
@@ -79,6 +79,10 @@ interface MissingMap {
     [slug: string]: true;
 }
 
+export type LiveUrlGetValue<T extends Record<string, unknown>> = (original: T) => string;
+export type LiveUrlUpdateValue<T extends Record<string, unknown>> = (original: T, url: string) => T;
+export type LiveUrlRequest<T extends Record<string, unknown>> = [LiveUrlProviderResult, LiveUrlGetValue<T>, LiveUrlUpdateValue<T>];
+
 /**
  * a collection of requests associated with a single upstream "item".
  * either a core release, or a pattern, a plugin or a theme.
@@ -114,7 +118,7 @@ export interface RequestGroup {
     /**
      * how to get live files.
      */
-    liveRequests: Array<LiveUrlProviderResult>;
+    liveRequests: Array<LiveUrlRequest<Record<string, unknown>>>;
 
     /**
      * was there any error during processing
@@ -125,6 +129,9 @@ export interface RequestGroup {
      * were there any changes to the parent JSON file.
      */
     noChanges: boolean;
+
+    migratedJsonPathname?: string;
+    legacyJsonPathname?: string;
 }
 
 /**
@@ -308,6 +315,127 @@ export function recentVersions(list: Array<string>, maxLength: number): Array<st
     return filtered;
 }
 
+async function downloadStandard(
+    options: CommandOptions,
+    conventions: StandardConventions,
+    group: RequestGroup,
+    missing: MissingMap,
+    groupStatus: ArchiveGroupStatus,
+): Promise<boolean> {
+    let ok = true;
+    const filtered = group.requests.filter((item) =>
+        item.upstream && item.relative && item.host &&
+        (options.force || options.rehash || (groupStatus.files[getFilesKey(item.host, item.relative)]?.status !== 'complete') &&
+                !missing[item.upstream])
+    );
+
+    jreporter({
+        operation: 'downloadStandard',
+        section: group.section,
+        slug: group.slug,
+        action: 'filtered',
+        size: filtered.length,
+        original_size: group.requests.length,
+    });
+    for (const item of filtered) {
+        if (item.upstream && item.relative && item.host) {
+            const key = getFilesKey(item.host, item.relative);
+            // we need this one
+            const needHash = options.rehash ||
+                !groupStatus.files[key] ||
+                !groupStatus.files[key].md5 ||
+                !groupStatus.files[key].sha1 ||
+                !groupStatus.files[key].sha256;
+
+            const fileStatus = await downloadFile(reporter, jreporter, conventions.ctx, item, options.force, needHash);
+            if (groupStatus.files[key]) {
+                groupStatus.files[key].status = fileStatus.status;
+                groupStatus.files[key].when = fileStatus.when;
+                groupStatus.files[key].is_readonly = fileStatus.is_readonly;
+                if (options.rehash) {
+                    groupStatus.files[key].md5 = fileStatus.md5;
+                    groupStatus.files[key].sha1 = fileStatus.sha1;
+                    groupStatus.files[key].sha256 = fileStatus.sha256;
+                }
+            } else {
+                groupStatus.files[key] = fileStatus;
+            }
+            if (fileStatus.status === 'unknown') {
+                throw new Deno.errors.BadResource(`unknown status after downloadFile`);
+            }
+            if (fileStatus.status !== 'complete') {
+                ok = false;
+            } else if (!fileStatus.md5 || !fileStatus.sha1 || !fileStatus.sha256) {
+                throw new Deno.errors.BadResource(`message digests are required for complete status`);
+            }
+        }
+    }
+    return ok;
+}
+
+async function downloadLive(
+    options: CommandOptions,
+    conventions: StandardConventions,
+    group: RequestGroup,
+    missing: MissingMap,
+    groupStatus: ArchiveGroupStatus,
+): Promise<boolean> {
+    if (!options.live || (group.liveRequests.length === 0)) {
+        return true;
+    }
+    if (!groupStatus.next_generation) {
+        groupStatus.next_generation = 1;
+    }
+    if (!groupStatus.live) {
+        groupStatus.live = {};
+    }
+    let ok = true;
+    const filtered = group.liveRequests.filter((item) => {
+        const [liveUrl, _f, _f2] = item;
+        return !missing[liveUrl.upstream];
+    });
+
+    jreporter({
+        operation: 'downloadLive',
+        section: group.section,
+        slug: group.slug,
+        action: 'filtered',
+        size: filtered.length,
+        original_size: group.liveRequests.length,
+    });
+    if (group.migratedJsonPathname) {
+        const json = await Deno.readTextFile(group.migratedJsonPathname);
+        const raw = JSON.parse(json);
+        const originals: Array<string> = [];
+        const updated: Array<string> = [];
+        if (raw && (typeof raw === 'object')) {
+            let info = raw as Record<string, unknown>;
+            for (const item of filtered) {
+                const [liveUrl, getF, updateF] = item;
+                const original = getF(info);
+                originals.push(original);
+                const status = await downloadLiveFile(jreporter, conventions, liveUrl.host, liveUrl, groupStatus.next_generation);
+                const name = status.key.substring(status.key.indexOf(':') + 1);
+                const url = new URL(name, conventions.ctx.hosts[liveUrl.host].baseUrl);
+                info = updateF(info, url.toString());
+                updated.push(getF(info));
+                groupStatus.live[status.key] = status;
+                if (status.generation === groupStatus.next_generation) {
+                    groupStatus.next_generation += 1;
+                }
+            }
+            if (info.sections && (typeof info.sections === 'object')) {
+                info.sections = migrateSectionUrls(originals, updated, info.sections as Record<string, string | undefined>);
+            }
+            const text = JSON.stringify(info, null, conventions.jsonSpaces);
+            await Deno.writeTextFile(group.migratedJsonPathname, text);
+        } else {
+            throw new Deno.errors.BadResource(`contents of ${group.migratedJsonPathname} is not as expected`);
+        }
+    }
+    return ok;
+}
+
 /**
  * Attempt to download a group of files.
  * @param options command-line options.
@@ -345,53 +473,10 @@ async function downloadRequestGroup(
         return true;
     }
 
-    let ok = true;
-    const filtered = group.requests.filter((item) =>
-        item.upstream && item.relative && item.host &&
-        (options.force || options.rehash || (groupStatus.files[getFilesKey(item.host, item.relative)]?.status !== 'complete') &&
-                !missing[item.upstream])
-    );
+    let ok = await downloadStandard(options, conventions, group, missing, groupStatus);
 
-    jreporter({
-        operation: 'downloadRequestGroup',
-        section: group.section,
-        slug: group.slug,
-        action: 'filtered',
-        size: filtered.length,
-    });
-    for (const item of filtered) {
-        if (item.upstream && item.relative && item.host) {
-            const key = getFilesKey(item.host, item.relative);
-            // we need this one
-            const needHash = options.rehash ||
-                !groupStatus.files[key] ||
-                !groupStatus.files[key].md5 ||
-                !groupStatus.files[key].sha1 ||
-                !groupStatus.files[key].sha256;
+    ok = ok && await downloadLive(options, conventions, group, missing, groupStatus);
 
-            const fileStatus = await downloadFile(reporter, jreporter, conventions.ctx, item, options.force, needHash);
-            if (groupStatus.files[key]) {
-                groupStatus.files[key].status = fileStatus.status;
-                groupStatus.files[key].when = fileStatus.when;
-                groupStatus.files[key].is_readonly = fileStatus.is_readonly;
-                if (options.rehash) {
-                    groupStatus.files[key].md5 = fileStatus.md5;
-                    groupStatus.files[key].sha1 = fileStatus.sha1;
-                    groupStatus.files[key].sha256 = fileStatus.sha256;
-                }
-            } else {
-                groupStatus.files[key] = fileStatus;
-            }
-            if (fileStatus.status === 'unknown') {
-                throw new Deno.errors.BadResource(`unknown status after downloadFile`);
-            }
-            if (fileStatus.status !== 'complete') {
-                ok = false;
-            } else if (!fileStatus.md5 || !fileStatus.sha1 || !fileStatus.sha256) {
-                throw new Deno.errors.BadResource(`message digests are required for complete status`);
-            }
-        }
-    }
     groupStatus.is_complete = ok;
 
     jreporter({
@@ -420,7 +505,7 @@ function downloadIsComplete(
     if (options.synced && group.noChanges) {
         return true;
     }
-    if (options.force || options.rehash || !groupStatus.is_complete) {
+    if (options.force || options.rehash || options.live || !groupStatus.is_complete) {
         return false;
     }
     for (const r of group.requests) {

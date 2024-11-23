@@ -230,6 +230,8 @@ export async function createThemeRequestGroup(
         requests: [],
         liveRequests: [],
         noChanges: !changed,
+        legacyJsonPathname,
+        migratedJsonPathname,
     };
     if (typeof themeInfo.error === 'string') {
         group.error = themeInfo.error;
@@ -291,15 +293,39 @@ export async function createThemeRequestGroup(
         group.requests.push(conventions.themeZip(conventions.ctx, slug, themeInfo.version, themeInfo.download_link));
     }
     if (themeInfo.preview_url && options.live) {
-        group.liveRequests.push(conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url));
+        const f = function (original: Record<string, unknown>, url: string): Record<string, unknown> {
+            const result = { ...original };
+            result.preview_url = url;
+            return result;
+        };
+        group.liveRequests.push(
+            [
+                conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url),
+                (info) => `${info.preview_url}`,
+                (info, url) => {
+                    const result = { ...info };
+                    result.preview_url = url;
+                    return result;
+                },
+            ],
+        );
     }
     if (themeInfo.screenshot_url && options.live) {
         // some ts.w.org URL's don't have a scheme?
-        if (themeInfo.screenshot_url.startsWith('//')) {
-            group.liveRequests.push(conventions.themeScreenshot(conventions.ctx, slug, `https:${themeInfo.screenshot_url}`));
-        } else {
-            group.liveRequests.push(conventions.themeScreenshot(conventions.ctx, slug, themeInfo.screenshot_url));
-        }
+        const screenshot_url = themeInfo.screenshot_url.startsWith('//')
+            ? `https:${themeInfo.screenshot_url}`
+            : themeInfo.screenshot_url;
+        group.liveRequests.push(
+            [
+                conventions.themeScreenshot(conventions.ctx, slug, screenshot_url),
+                (info) => `${info.screenshot_url}`,
+                (info, url) => {
+                    const result = { ...info };
+                    result.screenshot_url = url;
+                    return result;
+                },
+            ],
+        );
     }
 
     return group;

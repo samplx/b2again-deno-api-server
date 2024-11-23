@@ -240,18 +240,17 @@ function getSlugOriginalLiveUrlProvider(
     fileType: string,
     groupName: string = '/live',
 ): SlugOriginalLiveUrlProvider {
-    return function (ctx: MigrationContext, slug: string, original: string): LiveUrlProviderResult {
-        const filename = path.basename(original);
+    return function (ctx: MigrationContext, slug: string, upstream: string): LiveUrlProviderResult {
+        const url = new URL(upstream);
+        url.search = '';
+        const filename = path.basename(url.pathname);
         const split = splitDirname(ctx, section, slug);
         const dirname = `${groupName}/${section}/${sourceName}/${split}/${fileType}`;
-        const lastDot = filename.lastIndexOf('.');
-        const front = (lastDot < 0) ? filename : filename.substring(0, lastDot);
-        const extension = (lastDot < 0) ? '' : filename.substring(lastDot).toLowerCase();
         return {
             host,
             dirname,
-            front,
-            extension,
+            filename,
+            upstream,
         };
     };
 }
@@ -271,18 +270,15 @@ function getSlugLiveIndexUrlProvider(
     fileType: string,
     groupName: string = '/live',
 ): SlugOriginalLiveUrlProvider {
-    return function (ctx: MigrationContext, slug: string, _original: string): LiveUrlProviderResult {
+    return function (ctx: MigrationContext, slug: string, upstream: string): LiveUrlProviderResult {
         const filename = 'index.html';
         const split = splitDirname(ctx, section, slug);
         const dirname = `${groupName}/${section}/${sourceName}/${split}/${fileType}`;
-        const lastDot = filename.lastIndexOf('.');
-        const front = (lastDot < 0) ? filename : filename.substring(0, lastDot);
-        const extension = (lastDot < 0) ? '' : filename.substring(lastDot).toLowerCase();
         return {
             host,
             dirname,
-            front,
-            extension,
+            filename,
+            upstream,
         };
     };
 }
@@ -479,13 +475,13 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
         // interestingLocales -- default to all locales -- can be json w/comments or slugs
         // interestingLocales: getCommonProvider('downloads', 'core', sourceName, `my-locales.jsonc`),
         // missingCore -- url's to ignore since they 404
-        missingCore: getCommonProvider('downloads', 'core', sourceName, 'core-404.jsonc'),
+        // missingCore: getCommonProvider('downloads', 'core', sourceName, 'core-404.jsonc'),
         pluginSlugs: {
             defaults: getCommonProvider('downloads', 'plugins', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'plugins', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'plugins', sourceName, `featured-list.json`),
-            interesting: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `my-plugins.jsonc`),
-            missing: getCommonProvider('downloads', 'plugins', sourceName, `plugins-404.jsonc`),
+            interesting: getCommonProvider('downloads', 'plugins', sourceName, `my-plugins.jsonc`),
+            // missing: getCommonProvider('downloads', 'plugins', sourceName, `plugins-404.jsonc`),
             new: getCommonProvider('downloads', 'plugins', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'plugins', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'plugins', sourceName, `rejected-list.json`),
@@ -495,8 +491,8 @@ export default function getStandardConventions(sourceName: ArchiveSourceName = '
             defaults: getCommonProvider('downloads', 'themes', sourceName, `defaults-list.json`),
             effective: getCommonProvider('downloads', 'themes', sourceName, `effective-list.json`),
             featured: getCommonProvider('downloads', 'themes', sourceName, `featured-list.json`),
-            interesting: undefined, // getCommonProvider('downloads', 'themes', sourceName, `my-themes.jsonc`),
-            missing: getCommonProvider('downloads', 'themes', sourceName, `themes-404.jsonc`),
+            interesting: getCommonProvider('downloads', 'themes', sourceName, `my-themes.jsonc`),
+            // missing: getCommonProvider('downloads', 'themes', sourceName, `themes-404.jsonc`),
             new: getCommonProvider('downloads', 'themes', sourceName, `new-list.json`),
             popular: getCommonProvider('downloads', 'themes', sourceName, `popular-list.json`),
             rejected: undefined, // getCommonProvider('downloads', 'themes', sourceName, `rejected-list.json`),

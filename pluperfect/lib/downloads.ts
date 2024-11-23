@@ -19,10 +19,11 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import type { ConsoleReporter, JsonReporter } from '../../lib/reporter.ts';
 import * as path from 'jsr:@std/path';
-import type { ArchiveFileSummary } from '../../lib/archive-status.ts';
+import type { ArchiveFileSummary, LiveFileSummary } from '../../lib/archive-status.ts';
 import {
     type ContentHostType,
     hasPathname,
+    LiveUrlProviderResult,
     type MigrationContext,
     type StandardConventions,
     toPathname,
@@ -365,6 +366,94 @@ function liveFilename(
     return `${front}-${center}${ext}`;
 }
 
+async function fetchTempFile(
+    jreporter: JsonReporter,
+    ctx: MigrationContext,
+    details: LiveUrlProviderResult,
+): Promise<ArchiveFileSummary> {
+    if (!details.host || !details.upstream) {
+        throw new Deno.errors.NotSupported('upstream, and host must be defined');
+    }
+
+    let targetDir;
+    let pathname;
+    const s3sink = getS3sink(ctx, details.host);
+    if (s3sink) {
+        targetDir = getS3dir(s3sink);
+        if (!targetDir) {
+            throw new Deno.errors.BadResource(`temporary directory for s3sink ${s3sink} must be defined`);
+        }
+    } else {
+        const baseDirectory = ctx.hosts[details.host].baseDirectory;
+        if (!baseDirectory) {
+            throw new Deno.errors.BadResource(`baseDirectory is not set for host ${details.host}`);
+        } else {
+            targetDir = path.join(baseDirectory, details.dirname);
+            await Deno.mkdir(targetDir, { recursive: true });
+        }
+    }
+    const fetchDir = await Deno.makeTempDir({ dir: targetDir });
+    pathname = path.join(fetchDir, details.filename);
+
+    const when = Date.now();
+    const md5hash = createHash('md5');
+    const sha1hash = createHash('sha1');
+    const sha256hash = createHash('sha256');
+
+    jreporter({
+        operation: 'fetchTempFile',
+        sourceUrl: details.upstream,
+        filename: pathname,
+    });
+
+    using fp = await Deno.open(pathname, { read: true, write: true, createNew: true });
+    const output = fp.writable.getWriter();
+    await output.ready;
+    const response = await fetch(details.upstream);
+    if (!response.ok || !response.body) {
+        await output.close();
+        const error = `${response.status} ${response.statusText}`;
+        jreporter({
+            operation: 'downloadFile',
+            action: 'fetch',
+            status: 'failed',
+            sourceUrl: details.upstream,
+            filename: pathname,
+            error,
+        });
+        try {
+            await Deno.remove(fetchDir, { recursive: true });
+        } catch (_) {
+            // ignore any errors
+        }
+        return {
+            key: pathname,
+            status: 'failed',
+            is_readonly: false,
+            when,
+        };
+    }
+    for await (const chunk of response.body) {
+        md5hash.update(chunk);
+        sha1hash.update(chunk);
+        sha256hash.update(chunk);
+        output.write(chunk);
+    }
+    const md5 = md5hash.digest('hex');
+    const sha1 = sha1hash.digest('hex');
+    const sha256 = sha256hash.digest('hex');
+    await output.close();
+    return {
+        key: pathname,
+        status: 'complete',
+        is_readonly: false,
+        when,
+        md5,
+        sha1,
+        sha256,
+    };
+}
+
 /**
  * Download a 'live' file. A mutable file that will be downloaded
  * and then renamed based upon its content. Since we do not know
@@ -383,42 +472,51 @@ function liveFilename(
  * @returns information about the downloaded file, including its new name.
  */
 export async function downloadLiveFile(
-    reporter: ConsoleReporter,
     jreporter: JsonReporter,
     conventions: StandardConventions,
     host: ContentHostType,
-    sourceUrl: URL,
-    targetDir: string,
-    originalName: string,
-    middleLength: number,
-): Promise<ArchiveFileSummary> {
-    const relative = path.join(targetDir, liveFilename(originalName, 'download', middleLength));
-    if (!conventions.ctx.hosts[host] || !conventions.ctx.hosts[host].baseUrl) {
-        throw new Deno.errors.NotSupported(`${host} is not defined in migration context`);
-    }
-    const details = { host, upstream: sourceUrl.toString(), relative, url: sourceUrl };
-    const info = await downloadFile(reporter, jreporter, conventions.ctx, details, true);
-    if (middleLength === 0) {
-        jreporter({ operation: 'downloadLiveFile', relative });
-        return info;
-    }
+    details: LiveUrlProviderResult,
+    generation: number,
+): Promise<LiveFileSummary> {
+    const info = await fetchTempFile(jreporter, conventions.ctx, details);
     if ((info.status === 'complete') && (typeof info.sha256 === 'string')) {
-        const finalName = path.join(targetDir, liveFilename(originalName, info.sha256, middleLength));
-        const updated = { ...info };
+        const relative = path.join(details.dirname, liveFilename(details.filename, info.sha256, conventions.ctx.liveMiddleLength));
+        const updated = { ...info } as LiveFileSummary;
         updated.key = getFilesKey(host, relative);
-        try {
-            // a rename would keep the new file, we want to keep the old one
-            await Deno.lstat(finalName);
-            // if we make it here, we don't need the file we just downloaded
-            await Deno.remove(relative, { recursive: true });
-        } catch (_) {
-            // (at least when the lstat was executed the file didn't exist, so rename)
-            try {
-                await Deno.rename(relative, finalName);
-                jreporter({ operation: 'downloadLiveFile', finalName });
-            } catch (_) {
-                // ignore second failure
+        updated.generation = generation;
+        const s3sink = getS3sink(conventions.ctx, host);
+        if (s3sink) {
+            const exists = await s3ObjectExists(s3sink, relative);
+            jreporter({ operation: 'downloadLiveFile', s3sink, pathname: info.key, destination: relative, exists });
+            if (!exists) {
+                jreporter({ operation: 's3FileMove', s3sink, pathname: info.key, destination: relative });
+                await s3FileMove(s3sink, info.key, relative);
             }
+        } else {
+            const baseDirectory = conventions.ctx.hosts[host].baseDirectory;
+            if (baseDirectory) {
+                const finalName = path.join(baseDirectory, relative);
+                try {
+                    // a rename would keep the new file, we want to keep the old one
+                    await Deno.lstat(finalName);
+                    // if we make it here, we don't need the file we just downloaded
+                    // it gets removed along with the temp parent directory
+                } catch (_) {
+                    // (at least when the lstat was executed the file didn't exist, so rename)
+                    try {
+                        await Deno.rename(info.key, finalName);
+                        jreporter({ operation: 'downloadLiveFile', finalName });
+                    } catch (_) {
+                        // ignore second failure
+                    }
+                }
+            }
+        }
+        try {
+            // remove the temp directory
+            await Deno.remove(path.dirname(info.key), { recursive: true });
+        } catch (_) {
+            // ignore any failure
         }
         return updated;
     }

@@ -141,6 +141,29 @@ function migrateSections(sections: Record<string, string>): Record<string, strin
 }
 
 /**
+ * migrate the optional icons field.
+ * @param conventions how to find resources.
+ * @param slug plugin id.
+ * @param icons upstream icons resources.
+ * @returns migrated icons resources.
+ */
+function migrateIcons(
+    conventions: StandardConventions,
+    slug: string,
+    icons: Record<string, string>,
+): Record<string, string> {
+    const migrated: Record<string, undefined | string> = {};
+    for (const key in icons) {
+        const url = getLiveUrlFromProvider(
+            conventions.ctx,
+            conventions.pluginIcon(conventions.ctx, slug, icons[key]),
+        );
+        migrated[key] = url;
+    }
+    return migrated as Record<string, string>;
+}
+
+/**
  * build the thing to do the migration. this builds the migrator, the actual
  * migration is done later.
  * @param conventions how to access resources.
@@ -163,13 +186,12 @@ function getPluginMigratorProvider(
         getUrlFromProvider(ctx, conventions.pluginZip(ctx, slug, version, download_link as string));
     const homepage = (ctx: MigrationContext, homepage: unknown) =>
         getUrlFromProvider(ctx, conventions.pluginHomepage(ctx, slug, homepage as string));
-    const support_url = (ctx: MigrationContext, support_url: unknown) =>
-        getUrlFromProvider(ctx, conventions.pluginSupport(ctx, slug, support_url as string));
     const versions = (_ctx: MigrationContext, versions: unknown) =>
         migrateVersions(conventions, slug, versions as Record<string, string>);
     const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
     const banners = (_ctx: MigrationContext, banners: unknown) =>
         migrateBanners(conventions, slug, banners as Array<unknown> | BannersInfo);
+    const icons = (_ctx: MigrationContext, icons: unknown) => migrateIcons(conventions, slug, icons as Record<string, string>);
     return {
         ratings,
         rating: zero,
@@ -184,7 +206,7 @@ function getPluginMigratorProvider(
         versions,
         banners,
         preview_link,
-        support_url,
+        icons,
     };
 }
 
@@ -268,6 +290,8 @@ export async function createPluginRequestGroup(
         requests: [],
         liveRequests: [],
         noChanges: !changed,
+        legacyJsonPathname,
+        migratedJsonPathname,
     };
     if (typeof pluginInfo.error === 'string') {
         group.error = pluginInfo.error;
@@ -331,21 +355,84 @@ export async function createPluginRequestGroup(
         group.requests.push(conventions.pluginZip(conventions.ctx, slug, pluginInfo.version, pluginInfo.download_link));
     }
     if (pluginInfo.preview_link) {
-        group.liveRequests.push(conventions.pluginPreview(conventions.ctx, slug, pluginInfo.preview_link));
+        group.liveRequests.push(
+            [
+                conventions.pluginPreview(conventions.ctx, slug, pluginInfo.preview_link),
+                (info) => `${info.preview_link}`,
+                (info, url) => {
+                    const result = { ...info };
+                    result.preview_link = url;
+                    return result;
+                },
+            ],
+        );
     }
-    if (Array.isArray(pluginInfo.screenshots)) {
+    if (pluginInfo.screenshots && (typeof pluginInfo.screenshots === 'object')) {
         for (const n in pluginInfo.screenshots) {
-            if (pluginInfo.screenshots[n].src) {
-                group.liveRequests.push(conventions.pluginScreenshot(conventions.ctx, slug, pluginInfo.screenshots[n].src));
+            const src = pluginInfo.screenshots[n].src;
+            if (src) {
+                group.liveRequests.push(
+                    [
+                        conventions.pluginScreenshot(conventions.ctx, slug, src),
+                        (info) => {
+                            if (info.screenshots) {
+                                return (info.screenshots as Record<string, ScreenshotInfo>)[n].src ?? '';
+                            }
+                            throw new Deno.errors.BadResource(`invalid index in live screenshot`);
+                        },
+                        (info, url) => {
+                            const result = structuredClone(info);
+                            if (result.screenshots && (typeof result.screenshots === 'object') && (n in result.screenshots)) {
+                                (result.screenshots as Record<string, ScreenshotInfo>)[n].src = url;
+                            }
+                            return result;
+                        },
+                    ],
+                );
             }
         }
     }
     if (pluginInfo.banners && !Array.isArray(pluginInfo.banners)) {
         if (typeof pluginInfo.banners.high === 'string') {
-            group.liveRequests.push(conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.high));
+            group.liveRequests.push(
+                [
+                    conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.high),
+                    (info) => `${(info?.banners as BannersInfo).high}`,
+                    (info, url) => {
+                        const result = structuredClone(info);
+                        (result.banners as BannersInfo).high = url;
+                        return result;
+                    },
+                ],
+            );
         }
         if (typeof pluginInfo.banners.low === 'string') {
-            group.liveRequests.push(conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.low));
+            group.liveRequests.push(
+                [
+                    conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.low),
+                    (info) => `${(info?.banners as BannersInfo).low}`,
+                    (info, url) => {
+                        const result = structuredClone(info);
+                        (result.banners as BannersInfo).low = url;
+                        return result;
+                    },
+                ],
+            );
+        }
+    }
+    if (pluginInfo.icons && (typeof pluginInfo.icons === 'object')) {
+        for (const key in pluginInfo.icons) {
+            group.liveRequests.push(
+                [
+                    conventions.pluginIcon(conventions.ctx, slug, pluginInfo.icons[key]),
+                    (info) => `${info[key]}`,
+                    (info, url) => {
+                        const result = structuredClone(info);
+                        (result.icons as Record<string, string>)[key] = url;
+                        return result;
+                    },
+                ],
+            );
         }
     }
 
