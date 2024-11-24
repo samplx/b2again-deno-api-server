@@ -24,6 +24,11 @@ export const DEFAULT_NO_CHANGE_COUNT: number = 0;
  */
 export interface CommandOptions {
     /**
+     * enable download of core resources.
+     */
+    core: boolean;
+
+    /**
      * true to force download of all files.
      */
     force: boolean;
@@ -39,20 +44,24 @@ export interface CommandOptions {
     json: boolean;
 
     /**
+     * attempt to download l10n resources.
+     */
+    l10n: boolean;
+
+    /**
+     * attempt to download the list of slugs from upstream sources.
+     */
+    list: boolean;
+
+    /**
      * attempt to download live resources.
      */
     live: boolean;
+
+    /**
+     * attempt to download meta data resources.
+     */
     meta: boolean;
-    readOnly: boolean;
-
-    list: boolean;
-    summary: boolean;
-    l10n: boolean;
-
-    core: boolean;
-    patterns: boolean;
-    plugins: boolean;
-    themes: boolean;
 
     /**
      * number of no change items processed before we stop.
@@ -60,9 +69,24 @@ export interface CommandOptions {
     noChangeCount: string;
 
     /**
+     * enable download of pattern resources.
+     */
+    patterns: boolean;
+
+    /**
+     * enable download of plugin resources.
+     */
+    plugins: boolean;
+
+    /**
      * if true, only report errors.
      */
     quiet: boolean;
+
+    /**
+     * attempt to download read-only (zip, tar.gz, et al.) files.
+     */
+    readOnly: boolean;
 
     /**
      * flag indicating the message digest (hashes) should be recalculated.
@@ -70,9 +94,19 @@ export interface CommandOptions {
     rehash: boolean;
 
     /**
+     * generate summary resources.
+     */
+    summary: boolean;
+
+    /**
      * assume sync state (skip status checks when files don't change).
      */
     synced: boolean;
+
+    /**
+     * enable download of theme resources.
+     */
+    themes: boolean;
 
     /**
      * flag indicating a request to print the version.
@@ -91,42 +125,42 @@ export interface CommandOptions {
 export function getParseOptions(): ParseOptions {
     return {
         default: {
+            core: false,
             force: false,
             help: false,
             json: false,
+            l10n: false,
+            list: false,
             live: false,
             meta: false,
-            readOnly: false,
-            list: false,
-            summary: false,
-            l10n: false,
-            core: false,
+            noChangeCount: `${DEFAULT_NO_CHANGE_COUNT}`,
             patterns: false,
             plugins: false,
-            themes: false,
-            noChangeCount: `${DEFAULT_NO_CHANGE_COUNT}`,
             quiet: false,
+            readOnly: false,
             rehash: false,
+            summary: false,
             synced: false,
+            themes: false,
             version: false,
         },
         boolean: [
+            'core',
             'force',
             'help',
             'json',
+            'l10n',
+            'list',
             'live',
             'meta',
-            'readOnly',
-            'list',
-            'summary',
-            'l10n',
-            'core',
             'patterns',
             'plugins',
-            'themes',
             'quiet',
+            'readOnly',
             'rehash',
+            'summary',
             'synced',
+            'themes',
             'version',
         ],
         string: [
@@ -146,26 +180,46 @@ export function printHelp(programName: string, parseOptions: ParseOptions): void
     console.log(`${programName} [options]`);
     console.log();
     console.log(`Options include [default value]:`);
+    console.log(`--core                     [${parseOptions.default?.core}]`);
+    console.log(`    enable core resources download.`);
     console.log(`--force                    [${parseOptions.default?.force}]`);
     console.log(`    force download of files.`);
     console.log(`--help`);
     console.log(`    print this message and exit.`);
     console.log(`--json                     [${parseOptions.default?.json}]`);
     console.log(`    output JSON structured log.`);
-    console.log(`--jsonSpaces=spaces        [${parseOptions.default?.jsonSpaces}]`);
-    console.log(`    spaces used to delimit generated JSON files.`);
+    console.log(`--l10n                     [${parseOptions.default?.l10n}]`);
+    console.log(`    query upstream for resource lists.`);
+    console.log(`--list                     [${parseOptions.default?.list}]`);
+    console.log(`    query upstream for resource lists.`);
     console.log(`--live                     [${parseOptions.default?.live}]`);
     console.log(`    download live resources.`);
+    console.log(`--meta                     [${parseOptions.default?.meta}]`);
+    console.log(`    download meta resources.`);
     console.log(`--noChangeCount=number     [${parseOptions.default?.noChangeCount}]`);
     console.log(`    number of items without changes before we stop the section.`);
+    console.log(`--patterns                 [${parseOptions.default?.patterns}]`);
+    console.log(`    enable pattern resources download.`);
+    console.log(`--plugins                  [${parseOptions.default?.plugins}]`);
+    console.log(`    enable plugin resources download.`);
     console.log(`--quiet                    [${parseOptions.default?.quiet}]`);
     console.log(`    be quiet. supress non-error messages.`);
+    console.log(`--readOnly                 [${parseOptions.default?.readOnly}]`);
+    console.log(`    download read-only (zip/tar.gz) resources.`);
     console.log(`--rehash                   [${parseOptions.default?.rehash}]`);
     console.log(`    recalculate message digests (hashes).`);
-    console.log(`--retry                    [${parseOptions.default?.retry}]`);
-    console.log(`    retry to download failed files.`);
+    console.log(`--summary                  [${parseOptions.default?.summary}]`);
+    console.log(`    generate summary data files.`);
     console.log(`--synced                   [${parseOptions.default?.synced}]`);
     console.log(`    assume repos start synced - limit checks for new files.`);
+    console.log(`--themes                   [${parseOptions.default?.themes}]`);
+    console.log(`    enable theme resources download.`);
     console.log(`--version`);
     console.log(`    print program version and exit.`);
+    console.log(`
+If none of the groups: --core, --patterns, --plugins or --themes are selected,
+then they are all are enabled. (not recommended -- takes too long).
+If none of the steps: --list, --meta, --l10n, --readOnly, --live or --summary
+are selected, then all the steps will be executed. (normal operation)
+`);
 }

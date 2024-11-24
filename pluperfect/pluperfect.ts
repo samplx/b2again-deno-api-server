@@ -29,7 +29,7 @@ import { type CommandOptions, getParseOptions, printHelp } from './lib/options.t
 import getStandardConventions from '../lib/b2again-conventions.ts';
 import {
     type ArchiveGroupName,
-    CommonUrlProvider,
+    type CommonUrlProvider,
     hasPathname,
     type LiveUrlProviderResult,
     type MigrationContext,
@@ -428,7 +428,6 @@ async function downloadLive(
     if (!groupStatus.live) {
         groupStatus.live = {};
     }
-    let ok = true;
     const filtered = group.liveRequests.filter((item) => {
         const [liveUrl, _f, _f2] = item;
         return !missing[liveUrl.upstream];
@@ -442,37 +441,38 @@ async function downloadLive(
         size: filtered.length,
         original_size: group.liveRequests.length,
     });
-    if (group.migratedJsonPathname) {
-        const json = await Deno.readTextFile(group.migratedJsonPathname);
-        const raw = JSON.parse(json);
-        const originals: Array<string> = [];
-        const updated: Array<string> = [];
-        if (raw && (typeof raw === 'object')) {
-            let info = raw as Record<string, unknown>;
-            for (const item of filtered) {
-                const [liveUrl, getF, updateF] = item;
-                const original = getF(info);
-                originals.push(original);
-                const status = await downloadLiveFile(jreporter, conventions, liveUrl.host, liveUrl, groupStatus.next_generation);
-                const name = status.key.substring(status.key.indexOf(':') + 1);
-                const url = new URL(name, conventions.ctx.hosts[liveUrl.host].baseUrl);
-                info = updateF(info, url.toString());
-                updated.push(getF(info));
-                groupStatus.live[status.key] = status;
-                if (status.generation === groupStatus.next_generation) {
-                    groupStatus.next_generation += 1;
-                }
-            }
-            if (info.sections && (typeof info.sections === 'object')) {
-                info.sections = migrateSectionUrls(originals, updated, info.sections as Record<string, string | undefined>);
-            }
-            const text = JSON.stringify(info, null, conventions.jsonSpaces);
-            await Deno.writeTextFile(group.migratedJsonPathname, text);
-        } else {
-            throw new Deno.errors.BadResource(`contents of ${group.migratedJsonPathname} is not as expected`);
-        }
+    if (!group.migratedJsonPathname) {
+        return false;
     }
-    return ok;
+    const json = await Deno.readTextFile(group.migratedJsonPathname);
+    const raw = JSON.parse(json);
+    const originals: Array<string> = [];
+    const updated: Array<string> = [];
+    if (raw && (typeof raw === 'object')) {
+        let info = raw as Record<string, unknown>;
+        for (const item of filtered) {
+            const [liveUrl, getF, updateF] = item;
+            const original = getF(info);
+            originals.push(original);
+            const status = await downloadLiveFile(jreporter, conventions, liveUrl.host, liveUrl, groupStatus.next_generation);
+            const name = status.key.substring(status.key.indexOf(':') + 1);
+            const url = new URL(name, conventions.ctx.hosts[liveUrl.host].baseUrl);
+            info = updateF(info, url.toString());
+            updated.push(getF(info));
+            groupStatus.live[status.key] = status;
+            if (status.generation === groupStatus.next_generation) {
+                groupStatus.next_generation += 1;
+            }
+        }
+        if (info.sections && (typeof info.sections === 'object')) {
+            info.sections = migrateSectionUrls(originals, updated, info.sections as Record<string, string | undefined>);
+        }
+        const text = JSON.stringify(info, null, conventions.jsonSpaces);
+        await Deno.writeTextFile(group.migratedJsonPathname, text);
+    } else {
+        throw new Deno.errors.BadResource(`contents of ${group.migratedJsonPathname} is not as expected`);
+    }
+    return true;
 }
 
 /**

@@ -302,11 +302,6 @@ export async function createThemeRequestGroup(
         group.requests.push(conventions.themeZip(conventions.ctx, slug, themeInfo.version, themeInfo.download_link));
     }
     if (themeInfo.preview_url && options.live) {
-        const f = function (original: Record<string, unknown>, url: string): Record<string, unknown> {
-            const result = { ...original };
-            result.preview_url = url;
-            return result;
-        };
         group.liveRequests.push(
             [
                 conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url),

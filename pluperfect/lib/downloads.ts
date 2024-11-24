@@ -23,7 +23,7 @@ import type { ArchiveFileSummary, LiveFileSummary } from '../../lib/archive-stat
 import {
     type ContentHostType,
     hasPathname,
-    LiveUrlProviderResult,
+    type LiveUrlProviderResult,
     type MigrationContext,
     type StandardConventions,
     toPathname,
@@ -384,7 +384,6 @@ async function fetchTempFile(
     }
 
     let targetDir;
-    let pathname;
     const s3sink = getS3sink(ctx, details.host);
     if (s3sink) {
         targetDir = getS3dir(s3sink);
@@ -401,7 +400,7 @@ async function fetchTempFile(
         }
     }
     const fetchDir = await Deno.makeTempDir({ dir: targetDir });
-    pathname = path.join(fetchDir, details.filename);
+    const pathname = path.join(fetchDir, details.filename);
 
     const when = Date.now();
     const md5hash = createHash('md5');
