@@ -330,7 +330,7 @@ export async function createThemeRequestGroup(
                 (info) => `${info.screenshot_url}`,
                 (info, url) => {
                     const result = { ...info };
-                    result.screenshot_url = url;
+                    result.screenshot_url = url.startsWith('//') ? `https:${url}` : url;
                     return result;
                 },
             ],
