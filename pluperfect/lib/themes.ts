@@ -306,7 +306,7 @@ export async function createThemeRequestGroup(
     } else if (themeInfo.version && themeInfo.download_link && options.readOnly) {
         group.requests.push(conventions.themeZip(conventions.ctx, slug, themeInfo.version, themeInfo.download_link));
     }
-    if (themeInfo.preview_url && options.live) {
+    if ((changed || options.rehash) && themeInfo.preview_url) {
         group.liveRequests.push(
             [
                 conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url),
@@ -319,7 +319,7 @@ export async function createThemeRequestGroup(
             ],
         );
     }
-    if (themeInfo.screenshot_url && options.live) {
+    if ((changed || options.rehash) && themeInfo.screenshot_url) {
         // some ts.w.org URL's don't have a scheme?
         const screenshot_url = themeInfo.screenshot_url.startsWith('//')
             ? `https:${themeInfo.screenshot_url}`

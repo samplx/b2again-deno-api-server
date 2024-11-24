@@ -367,7 +367,7 @@ export async function createPluginRequestGroup(
     } else if (pluginInfo.version && pluginInfo.download_link) {
         group.requests.push(conventions.pluginZip(conventions.ctx, slug, pluginInfo.version, pluginInfo.download_link));
     }
-    if (pluginInfo.preview_link) {
+    if ((changed || options.rehash) && pluginInfo.preview_link) {
         group.liveRequests.push(
             [
                 conventions.pluginPreview(conventions.ctx, slug, pluginInfo.preview_link),
@@ -380,7 +380,7 @@ export async function createPluginRequestGroup(
             ],
         );
     }
-    if (pluginInfo.screenshots && (typeof pluginInfo.screenshots === 'object')) {
+    if ((changed || options.rehash) && pluginInfo.screenshots && (typeof pluginInfo.screenshots === 'object')) {
         for (const n in pluginInfo.screenshots) {
             const src = pluginInfo.screenshots[n].src;
             if (src) {
@@ -405,7 +405,7 @@ export async function createPluginRequestGroup(
             }
         }
     }
-    if (pluginInfo.banners && !Array.isArray(pluginInfo.banners)) {
+    if ((changed || options.rehash) && pluginInfo.banners && !Array.isArray(pluginInfo.banners)) {
         if (typeof pluginInfo.banners.high === 'string') {
             group.liveRequests.push(
                 [
@@ -433,7 +433,7 @@ export async function createPluginRequestGroup(
             );
         }
     }
-    if (pluginInfo.icons && (typeof pluginInfo.icons === 'object')) {
+    if ((changed || options.rehash) && pluginInfo.icons && (typeof pluginInfo.icons === 'object')) {
         for (const key in pluginInfo.icons) {
             group.liveRequests.push(
                 [
