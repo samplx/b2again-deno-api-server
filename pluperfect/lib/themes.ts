@@ -186,11 +186,11 @@ function getThemeMigrator(
  * Handle the downloading and processing of a single theme.
  * @param reporter how to log non-error information.
  * @param jreporter JSON structured logger.
- * @param host host where the files live.
  * @param options command-line options.
  * @param conventions how to access resources.
+ * @param locales list of locales to support/empty is all.
  * @param slug theme slug.
- * @returns
+ * @returns details about how to download the group.
  */
 export async function createThemeRequestGroup(
     reporter: ConsoleReporter,
@@ -200,9 +200,6 @@ export async function createThemeRequestGroup(
     locales: ReadonlyArray<string>,
     slug: string,
 ): Promise<RequestGroup> {
-    // the theme list query does not return a useful timestamp, so we have to
-    // download the individual theme files just to see if anything has changed.
-
     const themeFilename = conventions.themeFilename(conventions.ctx, slug);
     const legacyThemeFilename = conventions.legacyThemeFilename(conventions.ctx, slug);
     const url = getThemeInfoUrl(conventions.apiHost, slug);

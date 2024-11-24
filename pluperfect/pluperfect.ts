@@ -79,8 +79,22 @@ interface MissingMap {
     [slug: string]: true;
 }
 
+/**
+ * a function that is passed a record and gets a live url field.
+ */
 export type LiveUrlGetValue<T extends Record<string, unknown>> = (original: T) => string;
+
+/**
+ * a function that is passed a record and a new url value and returns a copy of the item with the
+ * field with the updated value.
+ */
 export type LiveUrlUpdateValue<T extends Record<string, unknown>> = (original: T, url: string) => T;
+
+/**
+ * triple value used to handle a live file.
+ * contains the url provider result, a function to extract the live url field, and a function that
+ * returns an updated version of the data with the new url setting.
+ */
 export type LiveUrlRequest<T extends Record<string, unknown>> = [LiveUrlProviderResult, LiveUrlGetValue<T>, LiveUrlUpdateValue<T>];
 
 /**
@@ -130,7 +144,14 @@ export interface RequestGroup {
      */
     noChanges: boolean;
 
+    /**
+     * optional pathname to the plugin/theme/pattern .json file
+     */
     migratedJsonPathname?: string;
+
+    /**
+     * optional pathname to the upstream item file.
+     */
     legacyJsonPathname?: string;
 }
 
@@ -315,6 +336,15 @@ export function recentVersions(list: Array<string>, maxLength: number): Array<st
     return filtered;
 }
 
+/**
+ * download standard files.
+ * @param options command-line options.
+ * @param conventions how to get resources.
+ * @param group collection of files to be downloaded.
+ * @param missing map of upstream requests that are 404's.
+ * @param groupStatus current status of the downloads.
+ * @returns true if ok, false on an error
+ */
 async function downloadStandard(
     options: CommandOptions,
     conventions: StandardConventions,
@@ -373,6 +403,15 @@ async function downloadStandard(
     return ok;
 }
 
+/**
+ * download the live requests.
+ * @param options command-line options.
+ * @param conventions how to get resources.
+ * @param group collection of files to be downloaded.
+ * @param missing map of upstream requests that are 404's.
+ * @param groupStatus current status of the downloads.
+ * @returns true if ok, false on an error
+ */
 async function downloadLive(
     options: CommandOptions,
     conventions: StandardConventions,
@@ -439,7 +478,9 @@ async function downloadLive(
 /**
  * Attempt to download a group of files.
  * @param options command-line options.
+ * @param conventions how to get resources.
  * @param group collection of files to be downloaded.
+ * @param missing map of upstream requests that will 404.
  * @returns true if they were all downloaded successfully.
  */
 async function downloadRequestGroup(
@@ -494,6 +535,7 @@ async function downloadRequestGroup(
 
 /**
  * determine if all of the requested files have already been downloaded successfully.
+ * @param options command-line options.
  * @param group collection of files we need to download.
  * @param groupStatus current status of the downloads.
  */
@@ -518,9 +560,9 @@ function downloadIsComplete(
 
 /**
  * save the group download status file.
+ * @param conventions how to get resources.
  * @param group collection of files to be downloaded.
  * @param groupStatus results of the download effort.
- * @param jsonSpaces how to expand json. pretty or not?
  */
 async function saveGroupStatus(
     conventions: StandardConventions,
@@ -549,6 +591,7 @@ async function saveGroupStatus(
 
 /**
  * attempt to read the status file, or initialize a new one.
+ * @param conventions how to get resources.
  * @param group collection of files to be downloaded.
  * @returns previous group status, or an empty new one.
  */

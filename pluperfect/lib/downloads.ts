@@ -86,6 +86,7 @@ async function isDownloadNeeded(
 /**
  * attempt to download a remote resource to a local file.
  * @param jreporter how to report structured JSON.
+ * @param ctx bag of information used to convert urls.
  * @param details upstream url and downstream pathname.
  * @returns details about the downloaded file, including hashes if complete.
  */
@@ -191,6 +192,7 @@ async function fetchFile(
  * read a previously downloaded file to calculate its message
  * digests (hashes). They are md5, sha1 and sha256 currently.
  * @param jreporter how to report structured JSON
+ * @param ctx bag of information used to convert urls.
  * @param details upstream url and downstream pathname.
  * @returns summary data including message digests (md5, sha1, and sha256)
  */
@@ -273,9 +275,8 @@ async function recalculateHashes(
  * Download a file, if required.
  * @param reporter how to report non-error information.
  * @param jreporter JSON structured logger.
- * @param host which host holds the file.
- * @param sourceUrl where to download the file.
- * @param targetFile where to put the file.
+ * @param ctx bag of information used to convert urls.
+ * @param details upstream url and downstream pathname.
  * @param [force=false] if we must download file the even if we have a copy.
  * @param [needHash=true] if we should read the file if it exists to calculate the hash.
  * @returns true if download was successful, false if not.
@@ -366,6 +367,13 @@ function liveFilename(
     return `${front}-${center}${ext}`;
 }
 
+/**
+ * download a temporary live file.
+ * @param jreporter how to report structured JSON.
+ * @param ctx bag of information used to convert urls.
+ * @param details upstream url and downstream pathname.
+ * @returns status of file download.
+ */
 async function fetchTempFile(
     jreporter: JsonReporter,
     ctx: MigrationContext,
@@ -462,13 +470,11 @@ async function fetchTempFile(
  * a collision, the files contents are assumed to be the same.
  * We preserve the old file when there is a collision in order to
  * keep the old timestamps.
- * @param reporter how to report non-error information.
  * @param jreporter JSON structured logger.
+ * @param conventions how to get resources.
  * @param host where the files live.
- * @param sourceUrl what is to be downloaded.
- * @param targetDir directory part of the target filename.
- * @param originalName original filename part of the URL.
- * @param middleLength number of characters in the 'hash' portion.
+ * @param details upstream url and downstream pathname.
+ * @param generation monotonically increasing generation counter.
  * @returns information about the downloaded file, including its new name.
  */
 export async function downloadLiveFile(
@@ -489,8 +495,19 @@ export async function downloadLiveFile(
             const exists = await s3ObjectExists(s3sink, relative);
             jreporter({ operation: 'downloadLiveFile', s3sink, pathname: info.key, destination: relative, exists });
             if (!exists) {
-                jreporter({ operation: 's3FileMove', s3sink, pathname: info.key, destination: relative });
-                await s3FileMove(s3sink, info.key, relative);
+                try {
+                    await s3FileMove(s3sink, info.key, relative);
+                    jreporter({ operation: 's3FileMove', s3sink, pathname: info.key, destination: relative });
+                } catch (e) {
+                    console.error(`s3FileMove failed`, e);
+                    jreporter({ operation: 's3FileMove', s3sink, pathname: info.key, destination: relative, error: `${e}` });
+                    return {
+                        key: info.key,
+                        status: 'failed',
+                        is_readonly: false,
+                        when: updated.when,
+                    };
+                }
             }
         } else {
             const baseDirectory = conventions.ctx.hosts[host].baseDirectory;
@@ -529,7 +546,6 @@ export async function downloadLiveFile(
  * @param legacyJson pathname of the legacy version of the JSON file.
  * @param migratedJson pathname of the migrated version of the JSON file.
  * @param force always remove existing files.
- * @param migrate how to convert from legacy to modern.
  * @returns tuple of the legacy data and the modern data.
  */
 async function readMetaLegacyJson<T extends Record<string, unknown>>(
