@@ -454,7 +454,7 @@ async function downloadLive(
             const [liveUrl, getF, updateF] = item;
             const original = getF(info);
             originals.push(original);
-            const status = await downloadLiveFile(jreporter, conventions, liveUrl.host, liveUrl, groupStatus.next_generation);
+            const status = await downloadLiveFile(jreporter, conventions, liveUrl.host, liveUrl, groupStatus.next_generation, options.force);
             const name = status.key.substring(status.key.indexOf(':') + 1);
             const url = new URL(name, conventions.ctx.hosts[liveUrl.host].baseUrl);
             info = updateF(info, url.toString());
@@ -488,8 +488,9 @@ async function downloadRequestGroup(
     conventions: StandardConventions,
     group: RequestGroup,
     missing: MissingMap,
+    groupStatus: ArchiveGroupStatus,
 ): Promise<boolean> {
-    const groupStatus: ArchiveGroupStatus = await loadGroupStatus(conventions, group);
+    // const groupStatus: ArchiveGroupStatus = await loadGroupStatus(conventions, group);
     if (group.error) {
         jreporter({
             operation: 'downloadRequestGroup',
@@ -597,18 +598,23 @@ async function saveGroupStatus(
  */
 async function loadGroupStatus(
     conventions: StandardConventions,
-    group: RequestGroup,
+    section: ArchiveGroupName,
+    slug: string,
 ): Promise<ArchiveGroupStatus> {
     const results: ArchiveGroupStatus = {
-        source_name: group.sourceName,
-        section: group.section,
-        slug: group.slug,
+        source_name: conventions.ctx.sourceName,
+        section: section,
+        slug: slug,
         is_complete: false,
         when: Date.now(),
         files: {},
+        next_generation: 1,
+        live: {},
     };
-    if (hasPathname(conventions.ctx, group.statusFilename)) {
-        const pathname = toPathname(conventions.ctx, group.statusFilename);
+    const statusFilename = conventions.pluginStatusFilename(conventions.ctx, slug);
+
+    if (hasPathname(conventions.ctx, statusFilename)) {
+        const pathname = toPathname(conventions.ctx, statusFilename);
         try {
             const contents = await Deno.readTextFile(pathname);
             const parsed = JSON.parse(contents);
@@ -707,8 +713,9 @@ async function coreSection(
         let failures = 0;
         const missingMap: MissingMap = await getMissingMap(conventions, conventions.missingCore);
         for (const release of releases) {
+            const groupStatus = await loadGroupStatus(conventions, 'core', release);
             const group = await createCoreRequestGroup(reporter, jreporter, options, conventions, locales, release);
-            const ok = await downloadRequestGroup(options, conventions, group, missingMap);
+            const ok = await downloadRequestGroup(options, conventions, group, missingMap, groupStatus);
             if (ok) {
                 successful += 1;
             } else {
@@ -770,7 +777,8 @@ async function pluginsSection(
     const noChangeCount = parseInt(options.noChangeCount);
     const missingMap: MissingMap = await getMissingMap(conventions, conventions.pluginSlugs.missing);
     for (const slug of slugs) {
-        const group = await createPluginRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+        const groupStatus = await loadGroupStatus(conventions, 'plugins', slug);
+        const group = await createPluginRequestGroup(reporter, jreporter, options, conventions, locales, slug, groupStatus);
         if (group.noChanges) {
             unchanged += 1;
             if ((unchanged > noChangeCount) && (noChangeCount !== 0)) {
@@ -778,7 +786,7 @@ async function pluginsSection(
                 break;
             }
         }
-        const ok = await downloadRequestGroup(options, conventions, group, missingMap);
+        const ok = await downloadRequestGroup(options, conventions, group, missingMap, groupStatus);
         if (ok) {
             successful += 1;
         } else {
@@ -821,7 +829,8 @@ async function themesSection(
     const noChangeCount = parseInt(options.noChangeCount);
     const missingMap: MissingMap = await getMissingMap(conventions, conventions.themeSlugs.missing);
     for (const slug of slugs) {
-        const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug);
+        const groupStatus = await loadGroupStatus(conventions, 'themes', slug);
+        const group = await createThemeRequestGroup(reporter, jreporter, options, conventions, locales, slug, groupStatus);
         if (group.noChanges) {
             unchanged += 1;
             if ((unchanged > noChangeCount) && (noChangeCount !== 0)) {
@@ -829,7 +838,7 @@ async function themesSection(
                 break;
             }
         }
-        const ok = await downloadRequestGroup(options, conventions, group, missingMap);
+        const ok = await downloadRequestGroup(options, conventions, group, missingMap, groupStatus);
         if (ok) {
             successful += 1;
         } else {

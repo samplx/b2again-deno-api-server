@@ -14,7 +14,9 @@
  *  limitations under the License.
  */
 
+import { LiveFileSummary } from './archive-status.ts';
 import type { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from './standards.ts';
+import { escape } from 'jsr:@std/regexp';
 
 /**
  * how to migrate an upstream resource (theme, plugin), to the
@@ -66,18 +68,75 @@ export function migrateStructure<Structure extends Record<string, unknown>>(
 }
 
 /**
- * determine the initial live url for a migration step from the
- * provider results and a migration context.
+ * Add a cache friendly middle section to a filename.
+ * @param name original filename.
+ * @param middle the cache stamp middle.
+ * @param middleLength how many characters to keep in the middle.
+ * @returns 'chunkhash'd filename.
+ */
+export function liveFilename(
+    name: string,
+    middle: string,
+    middleLength: number,
+): string {
+    const center = (middleLength > middle.length) ? middle : middle.substring(0, middleLength);
+    const lastDot = name.lastIndexOf('.');
+    if (lastDot < 0) {
+        return `${name}-${center}`;
+    }
+    const front = name.substring(0, lastDot);
+    const ext = name.substring(lastDot).toLowerCase();
+    return `${front}-${center}${ext}`;
+}
+
+/**
+ * create a pattern that will match a live filename with some hash value.
+ * @param p details about the url and local resource.
+ * @returns regexp that will match url with a hash.
+ */
+function liveFilenamePattern(
+    p: LiveUrlProviderResult,
+): RegExp {
+    const lastDot = p.filename.lastIndexOf('.');
+    let last;
+    if (lastDot < 0) {
+        last = escape(`${p.filename}-`) + '.*';
+    } else {
+        const front = p.filename.substring(0, lastDot);
+        const ext = p.filename.substring(lastDot).toLowerCase();
+        last = `${escape(front)}-.*${escape(ext)}`;
+    }
+    const full = escape(`${p.host}:${p.dirname}/`) + last;
+    return new RegExp(full);
+}
+
+/**
+ * determine the live url for a migration step from the
+ * provider results and a migration context and current
+ * live file map.
  * @param ctx bag of information needed to convert urls.
  * @param p details about the url and local resource.
- * @returns string URL for the "default" live url with no hash.
+ * @param live map of existing live files.
+ * @returns string URL for the live url.
  */
-export function getLiveUrlFromProvider(ctx: MigrationContext, p: LiveUrlProviderResult): string {
+export function getLiveUrlFromProvider(
+    ctx: MigrationContext,
+    p: LiveUrlProviderResult,
+    live: Record<string, LiveFileSummary>,
+): string {
     if (!ctx.hosts[p.host]) {
         console.log(JSON.stringify(ctx.hosts, null, '    '));
         throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
     }
-    return new URL(`${p.dirname}/${p.filename}`, ctx.hosts[p.host].baseUrl).toString();
+    const matcher = liveFilenamePattern(p);
+    const values = Object.values(live);
+    const filtered = values.filter((lfs) => matcher.test(lfs.key));
+    const sorted = filtered.sort((a, b) => (a.generation ?? 0) - (b.generation ?? 0));
+    if (sorted.length === 0) {
+        return new URL(`${p.dirname}/${p.filename}`, ctx.hosts[p.host].baseUrl).toString();
+    }
+    const key = sorted[0].key;
+    return new URL(key.substring(key.indexOf(':')+1), ctx.hosts[p.host].baseUrl).toString();
 }
 
 /**

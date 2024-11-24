@@ -15,6 +15,7 @@
  */
 
 import type { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
+import { ArchiveGroupStatus, LiveFileSummary } from '../../lib/archive-status.ts';
 import {
     getLiveUrlFromProvider,
     getUrlFromProvider,
@@ -63,11 +64,12 @@ function migrateScreenshots(
     ctx: MigrationContext,
     slug: string,
     legacy: Record<string, ScreenshotInfo>,
+    live: Record<string, LiveFileSummary>,
 ): Record<string, ScreenshotInfo> {
     const updated = structuredClone(legacy);
     for (const key of Object.keys(legacy)) {
         if (updated[key] && (typeof updated[key].src === 'string')) {
-            updated[key].src = getLiveUrlFromProvider(ctx, conventions.pluginScreenshot(ctx, slug, updated[key].src));
+            updated[key].src = getLiveUrlFromProvider(ctx, conventions.pluginScreenshot(ctx, slug, updated[key].src), live);
         }
     }
     return updated;
@@ -114,6 +116,7 @@ function migrateBanners(
     conventions: StandardConventions,
     slug: string,
     original: Array<unknown> | BannersInfo,
+    live: Record<string, LiveFileSummary>,
 ): Array<unknown> | BannersInfo {
     if (Array.isArray(original)) {
         return original;
@@ -121,10 +124,12 @@ function migrateBanners(
     let high;
     let low;
     if (typeof original.high === 'string') {
-        high = getLiveUrlFromProvider(conventions.ctx, conventions.pluginBanner(conventions.ctx, slug, original.high));
+        high = getLiveUrlFromProvider(conventions.ctx,
+            conventions.pluginBanner(conventions.ctx, slug, original.high), live);
     }
     if (typeof original.low === 'string') {
-        low = getLiveUrlFromProvider(conventions.ctx, conventions.pluginBanner(conventions.ctx, slug, original.low));
+        low = getLiveUrlFromProvider(conventions.ctx,
+            conventions.pluginBanner(conventions.ctx, slug, original.low), live);
     }
     return { high, low };
 }
@@ -152,12 +157,14 @@ function migrateIcons(
     conventions: StandardConventions,
     slug: string,
     icons: Record<string, string>,
+    live: Record<string, LiveFileSummary>,
 ): Record<string, string> {
     const migrated: Record<string, undefined | string> = {};
     for (const key in icons) {
         const url = getLiveUrlFromProvider(
             conventions.ctx,
             conventions.pluginIcon(conventions.ctx, slug, icons[key]),
+            live,
         );
         migrated[key] = url;
     }
@@ -176,11 +183,13 @@ function getPluginMigratorProvider(
     conventions: StandardConventions,
     slug: string,
     version: string,
+    groupStatus: ArchiveGroupStatus,
 ): MigrationStructureProvider<PluginDetails> {
+    const live = groupStatus.live ?? {};
     const preview_link = (ctx: MigrationContext, url: unknown) =>
-        getLiveUrlFromProvider(ctx, conventions.pluginPreview(ctx, slug, `${url}`));
+        getLiveUrlFromProvider(ctx, conventions.pluginPreview(ctx, slug, `${url}`), live);
     const screenshots = (ctx: MigrationContext, legacy: unknown) =>
-        migrateScreenshots(conventions, ctx, slug, legacy as Record<string, ScreenshotInfo>);
+        migrateScreenshots(conventions, ctx, slug, legacy as Record<string, ScreenshotInfo>, live);
     const ratings = (_ctx: MigrationContext, ratings: unknown) => migrateRatings(ratings as Record<string, number>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
     const download_link = (ctx: MigrationContext, download_link: unknown) =>
@@ -191,8 +200,9 @@ function getPluginMigratorProvider(
         migrateVersions(conventions, slug, versions as Record<string, string>);
     const sections = (_ctx: MigrationContext, sections: unknown) => migrateSections(sections as Record<string, string>);
     const banners = (_ctx: MigrationContext, banners: unknown) =>
-        migrateBanners(conventions, slug, banners as Array<unknown> | BannersInfo);
-    const icons = (_ctx: MigrationContext, icons: unknown) => migrateIcons(conventions, slug, icons as Record<string, string>);
+        migrateBanners(conventions, slug, banners as Array<unknown> | BannersInfo, live);
+    const icons = (_ctx: MigrationContext, icons: unknown) =>
+        migrateIcons(conventions, slug, icons as Record<string, string>, live);
     return {
         ratings,
         rating: zero,
@@ -223,12 +233,13 @@ function getPluginMigratorProvider(
 function getPluginMigrator(
     conventions: StandardConventions,
     slug: string,
+    groupStatus: ArchiveGroupStatus,
 ): (original: PluginDetails) => PluginDetails {
     return function (original: PluginDetails): PluginDetails {
         if (!original.version) {
             throw new Deno.errors.NotSupported(`plugin.version is not defined`);
         }
-        const provider = getPluginMigratorProvider(conventions, slug, original.version);
+        const provider = getPluginMigratorProvider(conventions, slug, original.version, groupStatus);
         const migrated = migrateStructure(provider, conventions.ctx, original);
         if (migrated.sections && migrated.screenshots && original.screenshots) {
             const originals: Array<string> = [];
@@ -262,6 +273,7 @@ export async function createPluginRequestGroup(
     conventions: StandardConventions,
     locales: ReadonlyArray<string>,
     slug: string,
+    groupStatus: ArchiveGroupStatus,
 ): Promise<RequestGroup> {
     const pluginFilename = conventions.pluginFilename(conventions.ctx, slug);
     const legacyPluginFilename = conventions.legacyPluginFilename(conventions.ctx, slug);
@@ -280,7 +292,7 @@ export async function createPluginRequestGroup(
         migratedJsonPathname,
         url,
         conventions.jsonSpaces,
-        getPluginMigrator(conventions, slug),
+        getPluginMigrator(conventions, slug, groupStatus),
     );
 
     const group: RequestGroup = {

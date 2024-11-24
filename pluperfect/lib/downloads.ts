@@ -31,6 +31,7 @@ import {
 } from '../../lib/standards.ts';
 import { getFilesKey } from '../pluperfect.ts';
 import { getS3dir, getS3sink, s3FileMove, s3ObjectDelete, s3ObjectExists } from './s3files.ts';
+import { liveFilename } from '../../lib/migration.ts';
 
 /**
  * A simple Either-like interface for an error (left-side) value.
@@ -346,28 +347,6 @@ export async function downloadFile(
 }
 
 /**
- * Add a cache friendly middle section to a filename.
- * @param name original filename.
- * @param middle the cache stamp middle.
- * @param middleLength how many characters to keep in the middle.
- * @returns 'chunkhash'd filename.
- */
-function liveFilename(
-    name: string,
-    middle: string,
-    middleLength: number,
-): string {
-    const center = (middleLength > middle.length) ? middle : middle.substring(0, middleLength);
-    const lastDot = name.lastIndexOf('.');
-    if (lastDot < 0) {
-        return `${name}-${center}`;
-    }
-    const front = name.substring(0, lastDot);
-    const ext = name.substring(lastDot).toLowerCase();
-    return `${front}-${center}${ext}`;
-}
-
-/**
  * download a temporary live file.
  * @param jreporter how to report structured JSON.
  * @param ctx bag of information used to convert urls.
@@ -482,6 +461,7 @@ export async function downloadLiveFile(
     host: ContentHostType,
     details: LiveUrlProviderResult,
     generation: number,
+    force: boolean,
 ): Promise<LiveFileSummary> {
     const info = await fetchTempFile(jreporter, conventions.ctx, details);
     if ((info.status === 'complete') && (typeof info.sha256 === 'string')) {
@@ -493,7 +473,7 @@ export async function downloadLiveFile(
         if (s3sink) {
             const exists = await s3ObjectExists(s3sink, relative);
             jreporter({ operation: 'downloadLiveFile', s3sink, pathname: info.key, destination: relative, exists });
-            if (!exists) {
+            if (!exists || force) {
                 try {
                     await s3FileMove(s3sink, info.key, relative);
                     jreporter({ operation: 's3FileMove', s3sink, pathname: info.key, destination: relative });
@@ -512,18 +492,29 @@ export async function downloadLiveFile(
             const baseDirectory = conventions.ctx.hosts[host].baseDirectory;
             if (baseDirectory) {
                 const finalName = path.join(baseDirectory, relative);
-                try {
-                    // a rename would keep the new file, we want to keep the old one
-                    await Deno.lstat(finalName);
-                    // if we make it here, we don't need the file we just downloaded
-                    // it gets removed along with the temp parent directory
-                } catch (_) {
-                    // (at least when the lstat was executed the file didn't exist, so rename)
+                if (force) {
                     try {
+                        await Deno.remove(finalName, { recursive: true });
                         await Deno.rename(info.key, finalName);
                         jreporter({ operation: 'downloadLiveFile', finalName });
+                    } catch (e) {
+                        console.error(`unable to rename temporary file ${info.key} to ${finalName}`, e);
+                        jreporter({ operation: 'downloadLiveFile', finalName, error: `${e}` });
+                    }
+                } else {
+                    try {
+                        // a rename would keep the new file, we want to keep the old one
+                        await Deno.lstat(finalName);
+                        // if we make it here, we don't need the file we just downloaded
+                        // it gets removed along with the temp parent directory
                     } catch (_) {
-                        // ignore second failure
+                        // (at least when the lstat was executed the file didn't exist, so rename)
+                        try {
+                            await Deno.rename(info.key, finalName);
+                            jreporter({ operation: 'downloadLiveFile', finalName });
+                        } catch (_) {
+                            // ignore second failure
+                        }
                     }
                 }
             }

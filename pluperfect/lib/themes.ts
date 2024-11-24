@@ -34,6 +34,7 @@ import {
 } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
+import { ArchiveGroupStatus } from '../../lib/archive-status.ts';
 
 /**
  * migrate theme author resources.
@@ -129,11 +130,13 @@ function getThemeMigratorProvider(
     conventions: StandardConventions,
     slug: string,
     version: string,
+    groupStatus: ArchiveGroupStatus,
 ): MigrationStructureProvider<ThemeDetails> {
+    const live = groupStatus.live ?? {};
     const preview_url = (ctx: MigrationContext, url: unknown) =>
-        getLiveUrlFromProvider(ctx, conventions.themePreview(ctx, slug, `${url}`));
+        getLiveUrlFromProvider(ctx, conventions.themePreview(ctx, slug, `${url}`), live);
     const screenshot_url = (ctx: MigrationContext, url: unknown) =>
-        getLiveUrlFromProvider(ctx, conventions.themeScreenshot(ctx, slug, `${url}`));
+        getLiveUrlFromProvider(ctx, conventions.themeScreenshot(ctx, slug, `${url}`), live);
     const author = (_ctx: MigrationContext, author: unknown) => migrateAuthor(author);
     const ratings = (_ctx: MigrationContext, ratings: unknown) => migrateRatings(ratings as Record<string, number>);
     const zero = (_ctx: MigrationContext, _zeroed: unknown) => 0;
@@ -174,12 +177,13 @@ function getThemeMigratorProvider(
 function getThemeMigrator(
     conventions: StandardConventions,
     slug: string,
+    groupStatus: ArchiveGroupStatus,
 ): (original: ThemeDetails) => ThemeDetails {
     return function (original: ThemeDetails): ThemeDetails {
         if (!original.version) {
             throw new Deno.errors.NotSupported(`theme.version is not defined`);
         }
-        const provider = getThemeMigratorProvider(conventions, slug, original.version);
+        const provider = getThemeMigratorProvider(conventions, slug, original.version, groupStatus);
         const migrated = migrateStructure(provider, conventions.ctx, original);
         if (migrated.sections) {
             const originals: Array<string> = [];
@@ -211,6 +215,7 @@ export async function createThemeRequestGroup(
     conventions: StandardConventions,
     locales: ReadonlyArray<string>,
     slug: string,
+    groupStatus: ArchiveGroupStatus,
 ): Promise<RequestGroup> {
     const themeFilename = conventions.themeFilename(conventions.ctx, slug);
     const legacyThemeFilename = conventions.legacyThemeFilename(conventions.ctx, slug);
@@ -228,7 +233,7 @@ export async function createThemeRequestGroup(
         migratedJsonPathname,
         url,
         conventions.jsonSpaces,
-        getThemeMigrator(conventions, slug),
+        getThemeMigrator(conventions, slug, groupStatus),
     );
 
     const group: RequestGroup = {
