@@ -35,7 +35,7 @@ import {
 } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
-import { ArchiveGroupStatus } from '../../lib/archive-status.ts';
+import type { ArchiveGroupStatus } from '../../lib/archive-status.ts';
 
 /**
  * migrate theme author resources.

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { LiveFileSummary } from './archive-status.ts';
+import type { LiveFileSummary } from './archive-status.ts';
 import type { LiveUrlProviderResult, MigrationContext, UrlProviderResult } from './standards.ts';
 import { escape } from 'jsr:@std/regexp';
 

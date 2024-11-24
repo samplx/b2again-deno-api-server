@@ -15,7 +15,7 @@
  */
 
 import type { BannersInfo, PluginDetails, ScreenshotInfo, TranslationsResultV1_0 } from '../../lib/api.ts';
-import { ArchiveGroupStatus, LiveFileSummary } from '../../lib/archive-status.ts';
+import type { ArchiveGroupStatus, LiveFileSummary } from '../../lib/archive-status.ts';
 import {
     getLiveUrlFromProvider,
     getUrlFromProvider,
