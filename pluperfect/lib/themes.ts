@@ -71,7 +71,7 @@ function migrateAuthor(author: unknown): string | ThemeAuthor {
 function migrateParent(
     conventions: StandardConventions,
     slug: string,
-    parent: ThemeParent
+    parent: ThemeParent,
 ): ThemeParent {
     const migrated = { ...parent };
     if (parent.homepage) {
@@ -108,7 +108,10 @@ function migrateVersions(
         if ((version === 'trunk') || !compareVersions.validate(version)) {
             migrated[version] = undefined;
         } else {
-            const url = getUrlFromProvider(conventions.ctx, conventions.themeZip(conventions.ctx, slug, version, versions[version]));
+            const url = getUrlFromProvider(
+                conventions.ctx,
+                conventions.themeZip(conventions.ctx, slug, version, versions[version]),
+            );
             migrated[version] = url;
         }
     }
