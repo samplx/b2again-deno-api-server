@@ -240,7 +240,8 @@ function getSlugOriginalLiveUrlProvider(
     fileType: string,
     groupName: string = '/live',
 ): SlugOriginalLiveUrlProvider {
-    return function (ctx: MigrationContext, slug: string, upstream: string): LiveUrlProviderResult {
+    return function (ctx: MigrationContext, slug: string, original: string): LiveUrlProviderResult {
+        const upstream = original.startsWith('//') ? `https:${original}` : original;
         const url = new URL(upstream);
         url.search = '';
         const filename = path.basename(decodeURIComponent(url.pathname));
