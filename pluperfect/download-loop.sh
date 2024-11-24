@@ -66,15 +66,13 @@ do
     then
         END_TIME="$(date '+%s')"
         STEP_WAIT="$((STEP_PACE_SECONDS - ( END_TIME - START_TIME ) ))"
-        echo "START_TIME=$START_TIME"
-        echo "END_TIME  =$END_TIME"
-        echo "STEP_WAIT =$STEP_WAIT"
+        # echo "START_TIME=$START_TIME"
+        # echo "END_TIME  =$END_TIME"
+        # echo "STEP_WAIT =$STEP_WAIT"
         if [ "$STEP_WAIT" -gt 0 ]
         then
-            echo sleep "$STEP_WAIT"
+            # echo sleep "$STEP_WAIT"
             sleep "$STEP_WAIT"
         fi
-    else
-        echo 'error: no wait'
     fi
 done
