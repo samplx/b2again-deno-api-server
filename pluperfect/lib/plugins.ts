@@ -125,12 +125,10 @@ function migrateBanners(
     let high;
     let low;
     if (typeof original.high === 'string') {
-        high = getLiveUrlFromProvider(conventions.ctx,
-            conventions.pluginBanner(conventions.ctx, slug, original.high), live);
+        high = getLiveUrlFromProvider(conventions.ctx, conventions.pluginBanner(conventions.ctx, slug, original.high), live);
     }
     if (typeof original.low === 'string') {
-        low = getLiveUrlFromProvider(conventions.ctx,
-            conventions.pluginBanner(conventions.ctx, slug, original.low), live);
+        low = getLiveUrlFromProvider(conventions.ctx, conventions.pluginBanner(conventions.ctx, slug, original.low), live);
     }
     return { high, low };
 }

@@ -454,7 +454,14 @@ async function downloadLive(
             const [liveUrl, getF, updateF] = item;
             const original = getF(info);
             originals.push(original);
-            const status = await downloadLiveFile(jreporter, conventions, liveUrl.host, liveUrl, groupStatus.next_generation, options.force);
+            const status = await downloadLiveFile(
+                jreporter,
+                conventions,
+                liveUrl.host,
+                liveUrl,
+                groupStatus.next_generation,
+                options.force,
+            );
             const name = status.key.substring(status.key.indexOf(':') + 1);
             const url = new URL(name, conventions.ctx.hosts[liveUrl.host].baseUrl);
             info = updateF(info, url.toString());

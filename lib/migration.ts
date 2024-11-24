@@ -158,7 +158,7 @@ export function getLiveUrlFromProvider(
         return new URL(`${p.dirname}/${p.filename}`, ctx.hosts[p.host].baseUrl).toString();
     }
     const key = sorted[0].key;
-    return new URL(key.substring(key.indexOf(':')+1), ctx.hosts[p.host].baseUrl).toString();
+    return new URL(key.substring(key.indexOf(':') + 1), ctx.hosts[p.host].baseUrl).toString();
 }
 
 /**
