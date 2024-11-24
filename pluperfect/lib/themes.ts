@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 import type { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } from '../../lib/api.ts';
 import {
     getLiveUrlFromProvider,
@@ -67,7 +68,11 @@ function migrateAuthor(author: unknown): string | ThemeAuthor {
  * @param parent upstream information about the parent theme.
  * @returns migrated information about the parent theme.
  */
-function migrateParent(conventions: StandardConventions, slug: string, parent: ThemeParent): ThemeParent {
+function migrateParent(
+    conventions: StandardConventions,
+    slug: string,
+    parent: ThemeParent
+): ThemeParent {
     const migrated = { ...parent };
     if (parent.homepage) {
         migrated.homepage = getUrlFromProvider(conventions.ctx, conventions.themeHomepage(conventions.ctx, slug, parent.homepage));
@@ -98,12 +103,16 @@ function migrateVersions(
     slug: string,
     versions: Record<string, string>,
 ): Record<string, string> {
-    const migrated: Record<string, string> = {};
+    const migrated: Record<string, undefined | string> = {};
     for (const version in versions) {
-        const url = getUrlFromProvider(conventions.ctx, conventions.themeZip(conventions.ctx, slug, version, versions[version]));
-        migrated[version] = url;
+        if ((version === 'trunk') || !compareVersions.validate(version)) {
+            migrated[version] = undefined;
+        } else {
+            const url = getUrlFromProvider(conventions.ctx, conventions.themeZip(conventions.ctx, slug, version, versions[version]));
+            migrated[version] = url;
+        }
     }
-    return migrated;
+    return migrated as Record<string, string>;
 }
 
 /**

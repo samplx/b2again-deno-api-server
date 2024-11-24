@@ -33,6 +33,7 @@ import {
 } from '../pluperfect.ts';
 import { downloadMetaLegacyJson, probeMetaLegacyJson } from './downloads.ts';
 import type { CommandOptions } from './options.ts';
+import { compareVersions } from 'https://deno.land/x/compare_versions@0.4.0/compare-versions.ts';
 
 /**
  * Determine the URL to use to request plugin information.
@@ -86,7 +87,7 @@ function migrateVersions(
 ): Record<string, string> {
     const migrated: Record<string, undefined | string> = {};
     for (const version in versions) {
-        if (version === 'trunk') {
+        if ((version === 'trunk') || !compareVersions.validate(version)) {
             migrated[version] = undefined;
         } else {
             const url = getUrlFromProvider(
@@ -252,7 +253,7 @@ function getPluginMigrator(
  * @param options command-line options.
  * @param conventions how to access resources.
  * @param slug plugin slug.
- * @returns
+ * @returns a request group collection.
  */
 export async function createPluginRequestGroup(
     reporter: ConsoleReporter,
