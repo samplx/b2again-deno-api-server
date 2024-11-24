@@ -19,6 +19,7 @@ import { ArchiveGroupStatus, LiveFileSummary } from '../../lib/archive-status.ts
 import {
     getLiveUrlFromProvider,
     getUrlFromProvider,
+    liveFileExists,
     migrateStructure,
     type MigrationStructureProvider,
 } from '../../lib/migration.ts';
@@ -367,37 +368,78 @@ export async function createPluginRequestGroup(
     } else if (pluginInfo.version && pluginInfo.download_link) {
         group.requests.push(conventions.pluginZip(conventions.ctx, slug, pluginInfo.version, pluginInfo.download_link));
     }
-    if ((changed || options.rehash) && pluginInfo.preview_link) {
-        group.liveRequests.push(
-            [
-                conventions.pluginPreview(conventions.ctx, slug, pluginInfo.preview_link),
-                (info) => `${info.preview_link}`,
-                (info, url) => {
-                    const result = { ...info };
-                    result.preview_link = url;
-                    return result;
-                },
-            ],
-        );
+    const live = groupStatus.live ?? {};
+    if (pluginInfo.preview_link) {
+        const livePreviewLink = conventions.pluginPreview(conventions.ctx, slug, pluginInfo.preview_link);
+        if (changed || options.rehash || !liveFileExists(conventions.ctx, livePreviewLink, live)) {
+            group.liveRequests.push(
+                [
+                    livePreviewLink,
+                    (info) => `${info.preview_link}`,
+                    (info, url) => {
+                        const result = { ...info };
+                        result.preview_link = url;
+                        return result;
+                    },
+                ],
+            );
+        }
     }
-    if ((changed || options.rehash) && pluginInfo.screenshots && (typeof pluginInfo.screenshots === 'object')) {
+    if (pluginInfo.screenshots && (typeof pluginInfo.screenshots === 'object')) {
         for (const n in pluginInfo.screenshots) {
             const src = pluginInfo.screenshots[n].src;
             if (src) {
+                const liveSrc = conventions.pluginScreenshot(conventions.ctx, slug, src);
+                if (changed || options.rehash || !liveFileExists(conventions.ctx, liveSrc, live)) {
+                    group.liveRequests.push(
+                        [
+                            liveSrc,
+                            (info) => {
+                                if (info.screenshots) {
+                                    return (info.screenshots as Record<string, ScreenshotInfo>)[n].src ?? '';
+                                }
+                                throw new Deno.errors.BadResource(`invalid index in live screenshot`);
+                            },
+                            (info, url) => {
+                                const result = structuredClone(info);
+                                if (result.screenshots && (typeof result.screenshots === 'object') && (n in result.screenshots)) {
+                                    (result.screenshots as Record<string, ScreenshotInfo>)[n].src = url;
+                                }
+                                return result;
+                            },
+                        ],
+                    );
+                }
+            }
+        }
+    }
+    if (pluginInfo.banners && !Array.isArray(pluginInfo.banners)) {
+        if (typeof pluginInfo.banners.high === 'string') {
+            const liveHigh = conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.high);
+            if (changed || options.rehash || !liveFileExists(conventions.ctx, liveHigh, live)) {
                 group.liveRequests.push(
                     [
-                        conventions.pluginScreenshot(conventions.ctx, slug, src),
-                        (info) => {
-                            if (info.screenshots) {
-                                return (info.screenshots as Record<string, ScreenshotInfo>)[n].src ?? '';
-                            }
-                            throw new Deno.errors.BadResource(`invalid index in live screenshot`);
-                        },
+                        liveHigh,
+                        (info) => `${(info?.banners as BannersInfo).high}`,
                         (info, url) => {
                             const result = structuredClone(info);
-                            if (result.screenshots && (typeof result.screenshots === 'object') && (n in result.screenshots)) {
-                                (result.screenshots as Record<string, ScreenshotInfo>)[n].src = url;
-                            }
+                            (result.banners as BannersInfo).high = url;
+                            return result;
+                        },
+                    ],
+                );
+            }
+        }
+        if (typeof pluginInfo.banners.low === 'string') {
+            const liveLow = conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.low);
+            if (changed || options.rehash || !liveFileExists(conventions.ctx, liveLow, live)) {
+                group.liveRequests.push(
+                    [
+                        liveLow,
+                        (info) => `${(info?.banners as BannersInfo).low}`,
+                        (info, url) => {
+                            const result = structuredClone(info);
+                            (result.banners as BannersInfo).low = url;
                             return result;
                         },
                     ],
@@ -405,47 +447,22 @@ export async function createPluginRequestGroup(
             }
         }
     }
-    if ((changed || options.rehash) && pluginInfo.banners && !Array.isArray(pluginInfo.banners)) {
-        if (typeof pluginInfo.banners.high === 'string') {
-            group.liveRequests.push(
-                [
-                    conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.high),
-                    (info) => `${(info?.banners as BannersInfo).high}`,
-                    (info, url) => {
-                        const result = structuredClone(info);
-                        (result.banners as BannersInfo).high = url;
-                        return result;
-                    },
-                ],
-            );
-        }
-        if (typeof pluginInfo.banners.low === 'string') {
-            group.liveRequests.push(
-                [
-                    conventions.pluginBanner(conventions.ctx, slug, pluginInfo.banners.low),
-                    (info) => `${(info?.banners as BannersInfo).low}`,
-                    (info, url) => {
-                        const result = structuredClone(info);
-                        (result.banners as BannersInfo).low = url;
-                        return result;
-                    },
-                ],
-            );
-        }
-    }
     if ((changed || options.rehash) && pluginInfo.icons && (typeof pluginInfo.icons === 'object')) {
         for (const key in pluginInfo.icons) {
-            group.liveRequests.push(
-                [
-                    conventions.pluginIcon(conventions.ctx, slug, pluginInfo.icons[key]),
-                    (info) => `${info[key]}`,
-                    (info, url) => {
-                        const result = structuredClone(info);
-                        (result.icons as Record<string, string>)[key] = url;
-                        return result;
-                    },
-                ],
-            );
+            const iconLive = conventions.pluginIcon(conventions.ctx, slug, pluginInfo.icons[key]);
+            if (changed || options.rehash || !liveFileExists(conventions.ctx, iconLive, live)) {
+                group.liveRequests.push(
+                    [
+                        iconLive,
+                        (info) => `${info[key]}`,
+                        (info, url) => {
+                            const result = structuredClone(info);
+                            (result.icons as Record<string, string>)[key] = url;
+                            return result;
+                        },
+                    ],
+                );
+            }
         }
     }
 

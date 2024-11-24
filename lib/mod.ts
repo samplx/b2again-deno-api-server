@@ -66,7 +66,7 @@ export type {
 
 export type { MigrationProvider, MigrationStructureProvider } from './migration.ts';
 
-export { getLiveUrlFromProvider, getUrlFromProvider, liveFilename, migrateStructure } from './migration.ts';
+export { getLiveUrlFromProvider, getUrlFromProvider, liveFilename, liveFileExists, migrateStructure } from './migration.ts';
 
 export type { ConsoleReporter, JsonLogWriter, JsonReporter } from './reporter.ts';
 

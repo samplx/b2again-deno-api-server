@@ -111,6 +111,29 @@ function liveFilenamePattern(
 }
 
 /**
+ * determine if we have an existing live file that matches the pattern.
+ * this function just checks the map, it doesn't actually check to see
+ * if the file exists on S3 or a file system.
+ * @param ctx bag of information needed to convert urls.
+ * @param p details about the url and local resource.
+ * @param live map of existing live files.
+ * @returns true if there is a matching live file.
+ */
+export function liveFileExists(
+    ctx: MigrationContext,
+    p: LiveUrlProviderResult,
+    live: Record<string, LiveFileSummary>,
+): boolean {
+    if (!ctx.hosts[p.host]) {
+        throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
+    }
+    const matcher = liveFilenamePattern(p);
+    const values = Object.values(live);
+    const filtered = values.filter((lfs) => matcher.test(lfs.key));
+    return (filtered.length > 0);
+}
+
+/**
  * determine the live url for a migration step from the
  * provider results and a migration context and current
  * live file map.
@@ -125,13 +148,12 @@ export function getLiveUrlFromProvider(
     live: Record<string, LiveFileSummary>,
 ): string {
     if (!ctx.hosts[p.host]) {
-        console.log(JSON.stringify(ctx.hosts, null, '    '));
         throw new Deno.errors.NotSupported(`host ${p.host} is not defined in ctx`);
     }
     const matcher = liveFilenamePattern(p);
     const values = Object.values(live);
     const filtered = values.filter((lfs) => matcher.test(lfs.key));
-    const sorted = filtered.sort((a, b) => (a.generation ?? 0) - (b.generation ?? 0));
+    const sorted = filtered.sort((a, b) => (b.generation ?? 0) - (a.generation ?? 0));
     if (sorted.length === 0) {
         return new URL(`${p.dirname}/${p.filename}`, ctx.hosts[p.host].baseUrl).toString();
     }

@@ -19,6 +19,7 @@ import type { ThemeAuthor, ThemeDetails, ThemeParent, TranslationsResultV1_0 } f
 import {
     getLiveUrlFromProvider,
     getUrlFromProvider,
+    liveFileExists,
     migrateStructure,
     type MigrationStructureProvider,
 } from '../../lib/migration.ts';
@@ -306,35 +307,42 @@ export async function createThemeRequestGroup(
     } else if (themeInfo.version && themeInfo.download_link && options.readOnly) {
         group.requests.push(conventions.themeZip(conventions.ctx, slug, themeInfo.version, themeInfo.download_link));
     }
-    if ((changed || options.rehash) && themeInfo.preview_url) {
-        group.liveRequests.push(
-            [
-                conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url),
-                (info) => `${info.preview_url}`,
-                (info, url) => {
-                    const result = { ...info };
-                    result.preview_url = url;
-                    return result;
-                },
-            ],
-        );
+    const live = groupStatus.live ?? {};
+    if (themeInfo.preview_url) {
+        const livePreviewUrl = conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url);
+        if (changed || options.rehash || !liveFileExists(conventions.ctx, livePreviewUrl, live)) {
+            group.liveRequests.push(
+                [
+                    conventions.themePreview(conventions.ctx, slug, themeInfo.preview_url),
+                    (info) => `${info.preview_url}`,
+                    (info, url) => {
+                        const result = { ...info };
+                        result.preview_url = url;
+                        return result;
+                    },
+                ],
+            );
+        }
     }
-    if ((changed || options.rehash) && themeInfo.screenshot_url) {
+    if (themeInfo.screenshot_url) {
         // some ts.w.org URL's don't have a scheme?
         const screenshot_url = themeInfo.screenshot_url.startsWith('//')
             ? `https:${themeInfo.screenshot_url}`
             : themeInfo.screenshot_url;
-        group.liveRequests.push(
-            [
-                conventions.themeScreenshot(conventions.ctx, slug, screenshot_url),
-                (info) => `${info.screenshot_url}`,
-                (info, url) => {
-                    const result = { ...info };
-                    result.screenshot_url = url.startsWith('//') ? `https:${url}` : url;
-                    return result;
-                },
-            ],
-        );
+        const liveScreenshotUrl = conventions.themeScreenshot(conventions.ctx, slug, screenshot_url);
+        if (changed || options.rehash || !liveFileExists(conventions.ctx, liveScreenshotUrl, live)) {
+            group.liveRequests.push(
+                [
+                    liveScreenshotUrl,
+                    (info) => `${info.screenshot_url}`,
+                    (info, url) => {
+                        const result = { ...info };
+                        result.screenshot_url = url.startsWith('//') ? `https:${url}` : url;
+                        return result;
+                    },
+                ],
+            );
+        }
     }
 
     return group;
