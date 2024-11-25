@@ -2,6 +2,7 @@
 .idea
 .vim
 .vscode
+.env
 
 experiment/
 
@@ -9,3 +10,6 @@ experiment/
 html_cov/
 cov.lcov
 coverage/
+
+node_modules/
+deno.lock

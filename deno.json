@@ -1,0 +1,33 @@
+{
+    "fmt": {
+        "exclude": [
+            "./pluperfect/build",
+            "./experiment"
+        ],
+        "indentWidth": 4,
+        "semiColons": true,
+        "useTabs": false,
+        "lineWidth": 132,
+        "singleQuote": true,
+        "proseWrap": "preserve"
+    },
+    "lint": {
+        "exclude": [
+            "./pluperfect/build",
+            "./experiment"
+        ]
+    },
+    "workspace": [
+        "./lib",
+        "./blue-eyes",
+        "./pluperfect"
+    ],
+    "imports": {
+        "@std/cli": "jsr:@std/cli@^1.0.6",
+        "@std/jsonc": "jsr:@std/jsonc@^1.0.1",
+        "@std/path": "jsr:@std/path@^1.0.6",
+        "@std/regexp": "jsr:@std/regexp@^1.0.0",
+        "@types/node": "npm:@types/node@^22.7.8"
+    },
+    "nodeModulesDir": "auto"
+}

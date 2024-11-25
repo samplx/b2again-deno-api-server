@@ -5,8 +5,8 @@
 A [monorepo](https://en.wikipedia.org/wiki/Monorepo)
 of tools for the **b2again&trade;&nbsp;CMS** project.
 Since the `blue-eyes` and `pluperfect` tools needed to share code,
-I decided to build a *monorepo* for the **b2again**
-[deno](https://docs.deno.com/) tools. This will never be a true *monorepo*,
+I decided to build a _monorepo_ for the **b2again**
+[deno](https://docs.deno.com/) tools. This will never be a true _monorepo_,
 since it will not include the core CMS code.
 
 Most code in the **b2again&trade;&nbsp;CMS** is under the GNU General Public License
@@ -21,11 +21,10 @@ or the [MIT](https://opensource.org/license/mit) license, if there is any demand
 
 Real soon now, the repo will include:
 
-* [blue-eyes](./blue-eyes/README.md) - API server for api.b2again.org
-* [pluperfect](./pluperfect/README.md) - keeps the archive at downloads.b2again.org in sync
-* [winchell](./winchell/README.md) - reports on everything.
-* [demattic](./demattic/README.md) - automattion of a rebranding fork
-* docs - some documentation
-* podman - Dockerfiles for b2again development
-* lib - common code
-* icons - shared visual assets
+- [blue-eyes](./blue-eyes/README.md) - API server for api.b2again.org
+- [pluperfect](./pluperfect/README.md) - keeps the archive at downloads.b2again.org in sync
+- [winchell](./winchell/README.md) - reports on everything.
+- [demattic](./demattic/README.md) - automattion of a rebranding fork
+- docs - some documentation
+- lib - common code
+- icons - shared visual assets

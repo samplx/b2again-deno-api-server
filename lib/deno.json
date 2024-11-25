@@ -1,0 +1,5 @@
+{
+    "name": "@b2again/lib",
+    "version": "0.7.0",
+    "exports": "./mod.ts"
+}
