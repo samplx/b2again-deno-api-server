@@ -1,456 +1,296 @@
-# b2again-legacy-repo-sync
+# pluperfect.ts
 
-A set of [Deno](https://docs.deno.com/)
-[Typescript](https://www.typescriptlang.org/docs/handbook/intro.html) programs that are
-designed to create an unofficial mirror of a legacy CMS project's
-public assets.
+A [Deno](https://docs.deno.com/)
+[Typescript](https://www.typescriptlang.org/docs/handbook/intro.html) program that is
+designed to maintain a repository of the legacy WordPress.org public assets.
 
-## Archive sizes
+It is named after the favorite Latin tense of lawyers, [_plus quam perfect_](https://en.wikipedia.org/wiki/Pluperfect).
+In English, we usually say past perfect, but **pluperfect** is pedantic like me.
+As in, “You should have _had made_ other plans to access WordPress.org assets.”
 
-The tools now support four archive modes.
+The long-term goal is a federated set of repositories, but we need to walk before we can run.
+Today, the MVP is to keep a single repo in sync with what is available upstream with no more
+than a 24 hour delay. Nice for the delay to be no more than two hours.
 
-- basic
-- live
-- zips
-- full
+When available, the repo files will live at [downloads.b2again.org](https://downloads.b2again.org/).
 
-A **basic** archive is the default. This is just an archive of
-the required meta data and _one_ read-only zip file for each plugin or theme.
-Only the current version is downloaded.
+The files will be followed by the api server (_blue-eyes_) at [api.b2again.org](https://api.b2again.org/).
 
-A **live** archive adds copies of all of the current screenshots, sample pages, and
-for plugins: banners.
 
-A **zips** archive includes **all** zip file versions. Note that some plugins and themes
-have hundreds of versions, which are a large contribution to the size of the archive.
+## Some Concepts
 
-A **full** archive includes everything: **minimal**, **live** and **zips**.
+To define things before I forget, let me introduce some concepts as they are used
+with the **b2again** project.
 
-The initial runs were using the `subversion` list. This is a list of plugins or themes based upon
-directory names in the subversion repositories. While this has the most number, there are large
-numbers of **404** for plugins and themes to which `api.wordpress.org` knows nothing. So, the
-code now has provisions to use different lists (see below). The default is now the list of
-`updated` plugins and themes.
+The first project goal is the creation of a repository (or repo) of digital assets that are
+associated with WordPress software and are normally accessed from WordPress.org.
+This repo, in turn, will be used to drive the api server (_blue-eyes_).
+
+To start, we will only have the existing assets. For b2again.org, assets that come
+from WordPress.org and its associated sites are called **legacy**.
+
+There are four **asset groups**:
+
+* core
+* patterns (not yet handled)
+* plugins
+* themes
+
+Files associated with these assets fit into four basic **asset roles**:
+
+* meta
+* live
+* read-only
+* stats
+
+The download process has basic **download steps**:
+
+* list
+* meta
+* readOnly
+* l10n
+* live
+* summary
+
+The `pluperfect.ts` command supports a number of command-line options.
+These options control which subset of data is downloaded and how.
+
+All **b2again-deno-tools** (this repo) share the concept of `StandardConventions`.
+The conventions are how we allow “infinite bike-shedding” as a feature.
+It will get a document of its own when I get around to it.
+But the conventions handle most of what is considered _configuration_.
+
+`pluperfect.ts` will attempt to read a file `.env` in the current directory
+when it is started.
+Any values read will supplement the process' environment variables.
+
+### Command-line Options
+
+* group options: `--core`, `--patterns`, `--plugins`, `--themes`
+* step options: `--list`, `--meta`, `--readOnly`, `--l10n`, `--live`, `--summary`
+* rehash option: `--rehash`
+* force option: `--force`
+* log output options: `--json`, `--quiet`
+* limit options: `--synced`, `--noChangeLimit=N`
+* information: `--help`, `--version`
+
+#### Group Options
+
+Normally, `pluperfect.ts` is limited to a single archive group at a time using one of the group options.
+This is done for performance reasons.
+It makes sense to run a copy for each group.
+
+If none of the options are selected, each of the groups will be attempted in turn.
+
+#### Step Options
+
+It is possible to limit the processing of a `pluperfect.ts` run by using specific step options.
+
+If none of the options are selected, it is the same as selecting all of them.
+
+Note: It is possible to limit the content downloaded by not executing steps,
+but that this may lead to 404 errors.
+If the `--l10n` step is not executed, no localization (l10n) files will be downloaded.
+If `--live` is avoided, the assets will never be downloaded, but the references to them will
+still exist.
+
+#### Rehash Option
+
+Depending upon the `StandardConventions` the `pluperfect.ts` script supports maintaining a `read-only` and `live` files in an S3 bucket.
+They can also be maintained as local files.
+The `--rehash` option acts differently based upon if it is acting on local files or on S3 based ones.
+The idea is to re-read the files in order to re-calculate the message digests.
+This make sense on local files, but on S3 based files, it is nearly the same as a `--force` option.
+It has a use with the `--live` step to force a re-download of all files. In this case, unlike the `--force` option, any existing live files are kept, but an attempt to download the file is made to see if the SHA-256 changed.
+
+#### Force Option
+
+Normally, we want to limit the scope of changes.
+If we have a file already, we don't download it again.
+The `--force` option will cause any asset that exists to be deleted before this check.
+This will force all files to be downloaded.
+**This is not normally what you want to do.**
+
+#### Log Output Option
+
+Normally, text logging is enabled.
+This can be changed to a structured JSON format using the `--json` option.
+If no logging is desired, a `--quiet` option is available.
+Errors are always logged in text format.
+
+#### Limit Options
+
+We do not have reliable timestamps from upstream to tell
+us if the data has changed. Some options control how we limit the download rather than just waste bandwidth.
+
+The `--synced` option indicates that the repo should be considered in a **synced** state.
+
+The `--noChangeLimit=N` option sets the **no-change-limit**, which is the number of items which are downloaded without change before the download attempt stops.
+
+The idea is that there are a small subset of files which can be downloaded, and then we can stop because so many files have no changes.
+There is a trade-off between giving up early so we can go back to seeing if there are any new items, and checking the entire list every time so that no changes are missed.
+
+#### Information Options
+
+The `--help` option provides a short help message and exits. The `--version` option prints the version and exits.
+
+### Asset Groups
+
+The **core** group represents the main WordPress release, there are about 750 releases.
+The **patterns** are associated with the block editor, there are about 2&nbsp;000 patterns.
+The **plugins** are used to extend WordPress. There are about 59&nbsp;000 plugins.
+A **theme** is used to alter the appearence of WordPress. There are about 13&nbsp;000 themes.
+
+
+### Asset Roles
+
+The **meta** data files contain information to be returned by the api that reference
+the contents of the repository. Meta data changes. The time-to-live is minutes to an hour.
+
+The **live** data files contain assets that are associated with the current _live_ version,
+rather than being versioned themselves. For example, screenshot files. The screenshot assets
+that are currently available are captured, but past versions are no longer available, and
+future versions may be introduced with any new theme or plugin version.
+To make the live files more cache friendly,
+we add a content-hash to their names.
+This means that when a live file changes, so does its name.
+This leads to a time-to-live for these files of days to years.
+
+The **read-only** data files contain the bulk of what people have associated with a repository.
+The `.zip` and `.tar.gz` files that contain the released code and assets. Since it depends
+upon the mecurial nature of upstream, it is not clear if these assets are immutable, but
+b2again.org assumes that they are. The time-to-live for these files is days to years.
+
+The **stats** data files are not maintained by `pluperfect.ts`. As a privacy focused project,
+b2again **does not track usage**. So the **stats** data files are filled with dummy
+data provided out-of-band. As dummy files, they have a long time-to-live. If they are
+being populated out-of-band, that process will define the time-to-live.
+
+### Download Steps
+
+There are a series of steps used to download each group of assets. In general, the flow
+is first by Asset Group, then by a global first step, and individual steps that are
+repeated for each member of the group.
+The first step, **list** gathers the members of the group.
+Then each of the remaining steps is executed in turn against each member of the list.
+
+
+#### List
+
+Controlled by the `--list` option. This step gathers the lists of members of the asset group.
+
+For core assets, there is only a single upstream list: all of the releases.
+For plugins and themes there are multiple lists based upon the upstream API _browse option_.
+There are `new`, `default`, `updated`, `featured`, and `popular` lists of themes and plugins.
+
+There is also an optional `interesting` list, that can be used to limit the repo to only a select list. There is also an optional `rejected` list, that defines plugins or themes from upstream that are not maintained.
+
+When the `--list` option is selected, `pluperfect.ts` will query upstream for data to populate the lists. After some processing, it will create an `effective` list of themes and plugins. The `effective` list is what is used in the remaining steps.
+
+When the `--list` option is _not_ selected, `pluperfect.ts` will read the `effective` list rather than query upstream. This is primarily used during development.
+
+#### Meta
+
+Both plugins and themes have meta data associated with them that is delivered by `api.wordpress.org`.
+When the `--meta` step is executed, this meta data is requested from upstream.
+
+The API data is then compared with any previous copy to determine if there were any changes.
+The values from the upstream data is then **migrated** to local values.
+The upstream and migrated data is stored, and that as well as if there was any change is used in later processing.
+
+Each core release, plugin, or theme is associated with a **request group**. This defines the list of files that need to be downloaded. It also has an associated status JSON file. This file contains the current status of the downloads. It describes the status of each file, including any message digests. Each also has an optional list of **translations**.
+
+During the meta stage, the files necessary
+
+#### Read-Only
+
+When the `--readOnly` option is in effect, `pluperfect.ts` will attempt to download files
+that do not already exist in the repo.
+
+#### L10N
+
+#### Live
+
+#### Summary
+
+### .env File
+
+It is a standard `.env` file to allow injecting secrets
+via environment variables. The current `b2again-conventions.ts` require a single
+S3 Sink to be defined, with seven associated environment variables.
+
+```bash
+R2DOWNLOADS_PORT="443"
+R2DOWNLOADS_USE_SSL="true"
+R2DOWNLOADS_END_POINT="account-id.r2.cloudflarestorage.com"
+R2DOWNLOADS_BUCKET="bucket-name"
+R2DOWNLOADS_ACCESS_KEY="access-key"
+R2DOWNLOADS_SECRET_KEY="secret-key"
+R2DOWNLOADS_REGION="auto"
+```
+
+## Repository Size
+
+**TL;DR** With the current settings, the bucket size of repository is about 2 TiB.
+
+While it is possible to use `pluperfect.ts` to create a subset repository that only
+contains a portion of the **legacy** assets, this goal is secondary.
+There are a number of optional limits that are not currently being used, and one that is.
+
+What is being used is what I call the **version depth** setting.
+The upstream **legacy** repository contains every version of every plugin and theme.
+Most third-party repositories appear to be maintaining
+a single version.
+At this time, `pluperfect` the plugin **version depth** is set to `10`. This will keep up-to ten (10) versions
+of each plugin.
+The theme **version depth** is `0` (zero) which acts as an infinite limit.
+
+
+Other knobs include:
+
+* limiting the core releases, plugins or themes that are maintained.
+* limiting the locales that are maintained.
+
+
+## Migration
+
+All meta data is maintained in two versions. The upstream, or legacy version and the migrated version. The migration that is applied to all meta data is the mapping of URL's.
 
 ### Plugins
 
-The preliminary numbers are ~30 GB for partial plugin download. Full download is ~644 GB.
-The first pass complete using the subversion repository list. I will update with
-additional information as it becomes available. I am using two Droplets to test.
-One has 2 GB of RAM, the other 8 GB. Both are using `debian 12` and `Deno 2.0.2`.
+The following fields are effected by the migration process:
 
-#### List: subversion
-
-There are a total of 103 266 plugins in the `subversion` list.
-
-```bash
-$ du -hs plugins/*
-37G	    plugins/live
-1.7G	plugins/meta
-605G	plugins/read-only
-```
-
-#### List: updated
-
-There are around 60k plugins in the `updated` list.
-
-After a **basic** download.
-
-```bash
-$ du -hs build/plugins/*
-1.7G	build/plugins/meta
-32G	build/plugins/read-only
-```
-
-```text
-pluperfect v0.5.0
-started:   Thu, 24 Oct 2024 08:08:26 GMT
-...
-Total plugins processed:  59927
-Total successful:         59757
-Total failures:           12
-Total skipped:            158
-completed: Thu, 24 Oct 2024 15:27:01 GMT
-```
-
-After a **live** download. The first time I ran this I discovered
-an issue that I think I may leave as is. After I had downloaded
-the **basic** plugins repository, I then executed a
-`./pluperfect.ts --live --verbose` command. While this did enable a
-**live** archive, it didn't expand the existing archive, it just added
-the live data when a plugin was updated. This means that only 193
-plugins worth of **live** data was actually available after.
-Since the JSON files don't know the state of the archive, it doesn't
-recognize that **existing** entries need to be refreshed.
-I could add a bunch of code, but for now, I just add the `--force`
-option to get the desired result. (and re-run the test).
-
-```bash
-$ du -hs build/plugins/*
-403M	build/plugins/live
-1.7G	build/plugins/meta
-33G	build/plugins/read-only
-```
-
-```text
-pluperfect v0.5.0
-started:   Thu, 24 Oct 2024 15:33:46 GMT
-...
-Total plugins processed:  59924
-Total successful:         193
-Total failures:           0
-Total skipped:            59731
-completed: Thu, 24 Oct 2024 15:40:15 GMT
-```
-
-After the re-run.
-
-```bash
-$ du -hs build/plugins/*
-37G	build/plugins/live
-1.8G	build/plugins/meta
-32G	build/plugins/read-only
-```
-
-```text
-pluperfect v0.5.0
-started:   Thu, 24 Oct 2024 16:45:46 GMT
-...
-Total plugins processed:  59860
-Total successful:         59294
-Total failures:           204
-Total skipped:            362
-completed: Fri, 25 Oct 2024 04:29:51 GMT
-```
-
-Note: It appears that plugins are being removed from the `api.wordpress.org` registry.
-
-After a **zips** download.
-
-- [TBD]
-
-After a **full** download.
-
-- [TBD]
+* `active_installs`
+* `banners`
+* `download_link`
+* `homepage`
+* `icons`
+* `num_ratings`
+* `preview_link`
+* `rating`
+* `ratings`
+* `screenshots`
+* `sections`
+* `support_threads`
+* `support_threads_resolved`
+* `versions`
 
 ### Themes
 
-The preliminary numbers are ~22 GB for partial themes download and ~306 GB for a full download.
-The list of themes is taken from the subversion repository HTML page at `https://themes.svn.wordpress.org/`.
+The following fields are effected by the migration process:
+
+* `active_installs`
+* `author`
+* `downloaded`
+* `download_link`
+* `homepage`
+* `num_ratings`
+* `parent`
+* `preview_url`
+* `rating`
+* `ratings`
+* `reviews_url`
+* `screenshot_url`
+* `sections`
+* `versions`
 
-#### List: subversion
-
-There are 27 531 themes in the `subversion` list.
-
-```bash
-$ du -hs themes/*
-5.0G	themes/live
-351M	themes/meta
-301G	themes/read-only
-```
-
-#### List: updated
-
-There are around 13k themes in the `updated` list.
-
-After a **basic** download.
-
-```bash
-$ du -hs build/themes/*
-209M	build/themes/meta
-18G	build/themes/read-only
-```
-
-```text
-themattic v0.5.0
-started:   Thu, 24 Oct 2024 07:39:19 GMT
-...
-Total themes processed:   12985
-Total successful:         12984
-Total failures:           1
-Total skipped:            0
-completed: Thu, 24 Oct 2024 09:46:26 GMT
-```
-
-After a **live** download.
-
-```bash
-$ du -hs build/themes/*
-4.9G	build/themes/live
-223M	build/themes/meta
-18G	build/themes/read-only
-```
-
-```text
-themattic v0.5.0
-started:   Thu, 24 Oct 2024 11:38:10 GMT
-...
-Total themes processed:   12987
-Total successful:         12904
-Total failures:           83
-Total skipped:            0
-completed: Thu, 24 Oct 2024 16:22:37 GMT
-```
-
-After a **zips** download.
-
-```bash
-$ du -hs build/themes/*
-301M	build/themes/meta
-298G	build/themes/read-only
-```
-
-```text
-themattic v0.5.0
-started:   Thu, 24 Oct 2024 16:41:58 GMT
-...
-Total themes processed:   12987
-Total successful:         12896
-Total failures:           88
-Total skipped:            3
-completed: Fri, 25 Oct 2024 23:01:51 GMT
-```
-
-After a **full** download.
-
-```bash
-$ du -hs build/themes/*
-5.6M	build/themes/live
-202M	build/themes/meta
-298G	build/themes/read-only
-```
-
-```text
-```
-
-The execution of `thematic.ts --full --retry`, which uses the default `update`
-list on a 2 GB Droplet takes a little over 3 minutes.
-This would need to be executed periodically to keep the repo up-to-date with upstream.
-It is not clear what the expected arrival rate is for new theme versions. A once every four hours update rate
-seems like a reasonable starting point that would not put significant demand on upsteam resources.
-Although once a day may be sufficient for most needs.
-
-### Core
-
-Core has three dimensions of control of the size of the archive. The first are which releases
-to download, the second is the locales to be downloaded. A release can be in one of three
-states: `latest`, `outdated` or `insecure`. The `en_US` locale is always included since it
-is the basis for the other releases. Normally, all configured locales are archived, but the
-`--localesFilename` can be used to load a JSON w/comments file containing a list of locales.
-Also, the `--locales=name` option can be used one or more times to include a locale in the
-archive. The third dimension determines if all of the archives will be downloaded, or just
-the main release wordpress ZIP file (and associated .sh1 and .md5 files). If the `--full`
-or the `--zips` options is specified, all of the archive files will be downloaded. Otherwise,
-only the main ZIP will be.
-
-After a download of all releases, but with only the main ZIP archive:
-
-```bash
-$ du -hs build/core/*
-7.3G	build/core/meta
-41G	build/core/read-only
-```
-
-```text
-midst v0.5.2
-started:   Sat, 26 Oct 2024 23:58:03 GMT
-...
-completed: Sun, 27 Oct 2024 05:53:23 GMT
-```
-
-After a download of all releases, with `--full` option to get all archives:
-
-```bash
-$ du -hs build/core/*
-7.4G	build/core/meta
-418G	build/core/read-only
-```
-
-```text
-midst v0.5.2
-started:   Sun, 27 Oct 2024 07:50:58 GMT
-> mkdir -p build/core/meta/legacy
-first we need to read the previous latest
-next we need a list of releases
-fetch(https://api.wordpress.org/core/stable-check/1.0/) > build/core/meta/legacy/legacy-releases.json
-previous latest release:   6.6.2
-latest release:            6.6.2
-number of releases:        745
-list:                      all
-...
-completed: Sun, 27 Oct 2024 22:46:57 GMT
-```
-
-## pluperfect.ts
-
-A tool to mirror wordpress.org plugins and associated files.
-
-## themattic.ts
-
-A tool to mirror wordpress.org themes and associated files.
-
-## midst.ts
-
-A tool to mirror wordpress.org core releases and associated files.
-
-## Limitations
-
-The current implementation is single-threaded.
-Slow and steady doesn't put an undue burden on up-stream resources. Once
-the archive is downloaded, updates are minimal and not time critical.
-It is hard to justify a need for up-to-the-minute mirroring, when a
-once a day update schedule may meet most needs.
-Again, it is open source, so someone can multi-thread it if they want.
-
-<s>The current implementation is also has a considerable memory footprint.
-It requires a 8GB Droplet to download the plugins. A 2GB Droplet was able
-to download the themes. Future versions may address this.</s>
-After version `0.3.0`, a 2 GB Droplet was able to download both themes and plugins.
-
-## Lists
-
-The tools support a list of items to be downloaded. The items, plugins or themes, are
-identified by their **slug**. For example, everyone's favorite plugin to delete has
-the slug `hello-dolly`.
-
-Currently, the following list types are supported:
-
-- `subversion`
-- `interesting`
-- `defaults`
-- `featured`
-- `new`
-- `popular`
-- `updated`
-
-The initial tools only supported gathering the list from the subversion page, so that list is
-called `subversion`. This page is
-problematic since around half of the entries are not valid. This leads to a whole lot of
-**404**'s as we attempt to get the detailed information about a plugin or theme that does
-not exist. It is however, the largest list, if you don't want to miss anything.
-
-As an alternative, there are two sources. First, a list of slugs can be read from a file.
-This would allow for someone to easily create a mirror of the plugins and themes that they
-find _interesting_. So the list is named `interesting`.
-
-There is also the existing wordpress API at `api.wordpress.org`. This has REST API's that
-provide information about groups of plugins and themes. They have a `browse` parameter,
-each setting of which leads to another supported list type. The default (not provided)
-value results in the `defaults` list. Then the `featured`, `new`, `popular` and `updated`
-values for `browse` correspond to the same name in a list.
-
-At least with themes, there is data that comes from `api.wordpress.org` when a list of
-themes is requested that is not included when a single theme's information is requested.
-This means that the `themes.json` file that is generated includes information from
-the list of themes from the API, information about a specific theme from `legacy-themes.json`,
-in addition to the localization changes.
-
-## Directory structure
-
-### `/live`
-
-Contains mutable files associated with the "current" version.
-Under this directory there are screenshots, sample pages, and banners (plugins).
-Only exists in **full** or a **live** archive.
-
-Files in the live tree are renamed to make them cache friendly. The **SHA-256**
-of the file contents are then used to construct a file name. In order to support
-this structure, the files must be downloaded before the script can determine
-if there is any change. If the message digests match, the files are considered
-to have the same content. The new file is discarded so that the timestamps
-remain with the older file.
-
-### `/meta`
-
-Contains mutable JSON file describing the archive. The contents of the JSON is
-can be used to serve the WP compatible API.
-
-### `/read-only`
-
-Contains immutable **zip** files. These files are marked read-only
-in the archive. They are assumed to be immutable, at least for performance
-purposes. Immutable for businesses reasons is beyond the scope of these tools.
-
-### `legacy` directory
-
-In order to distinguish content that came from upstream sources, and any future
-local development, a `legacy` directory level is added.
-
-### (Two-letter) Prefix Directory
-
-The existing legacy layout favors an **all-in-one** approach. It has more
-than one directory with over 100 000 entries. As a premature optimization,
-I will not replicate this.
-I have not tested this, but I think the
-operating system can optimize two lookups of much smaller directories
-rather than a single lookup of 100 000 entries. Just think of the
-cycles spent after the `ls` and before the **Control-C**. Plus at some
-point, web servers, etc. have to handle sorted lists of 100 000 entries.
-Sorry, not going to do it.
-
-So, after a minimal amount of testing, I settled on a two-letter prefix
-followed by the full name for large (plugins, themes) lists. Of course, the
-**wp** directory will always be an outlyer, still 8 692 is **much** less than
-103 234 entries long (recent values). So there are about 900 prefix directories,
-each with an average near 120 plugins or themes inside.
-
-And of course, this being open-source, you can change it for your archive.
-There is an `--prefixLength` option to alter the layout. A `prefixLength`
-less than zero will give you a set of reports on how things break down for
-prefix lengths of 1, 2, 3 and 4. Anything else, you need to hack some code.
-A `--prefixLength=0` option should remove the prefix directory altogether, but
-I didn't spend much time testing it.
-
-#### Unicode Prefix Directory
-
-There are Subversion directory names which have a first character with a
-code point past 'z'. These I call "Unicode" or "Post-ASCII" directories
-(although as a pedantic fool, I must point out that all directores are
-named with Unicode characters.)
-
-As of today, none of these plugins nor themes actually have been "released",
-in that the `api.wordpress.org` API still does not recognize a **Post-ASCII** slug.
-
-As an example of future proofing/over-engineering, these all get put into
-a single **overflow** prefix directory, with the name `zz+`.
-
-### live leaf directory
-
-At the _leaf_ of each plugin or theme directory structure is a **live**
-directory. This directory contains an optional `screenshots` directory.
-Plugins may have a `banners` directory. Themes have an optional `preview` directory.
-The screenshots and banners are typically PNG format files, with some JPG or others.
-The `preview` directory usually contains a single `index.html` file.
-
-### meta leaf directory
-
-Each plugin or theme has a directory that contains the **JSON** format files
-that describe the item and its contents. There are usually two files in
-the directory. A _legacy_ file which comes from the upstream server, and
-the _active_ file which may be used to serve API content. The _active_
-file may be patched with data from multiple data sources, and may be
-redacted as well. It also has URLs translated to downsteam versions.
-
-### read-only directory
-
-Each plugin or theme has a directory that contains **Zip** format files.
-These are the _contents_ of the plugin or theme. They are archived
-as **read-only** files as recieved from the upsteam source. The version
-number is embedded in the file name. In a **full** archive, most
-directories have multiple versions. In a **partial** archive, only a single
-version is downloaded, although older versions are not purged.
-
-### An example - acid-rain theme
-
-The **partial** archive of the _acid-rain_ theme includes the following files:
-
-- `themes/meta/ac/acid-rain/theme.json`
-- `themes/meta/ac/acid-rain/legacy-theme.json`
-- `themes/read-only/ac/acid-rain/acid-rain.1.1.zip`
-
-The **full** archive of the _acid-rain_ theme adds the following files:
-
-- `themes/live/ac/acid-rain/preview/index.html`
-- `themes/live/ac/acid-rain/screenshots/screenshot.png`
-- `themes/read-only/ac/acid-rain/acid-rain.1.0.1.zip`
-- `themes/read-only/ac/acid-rain/acid-rain.1.0.zip`
